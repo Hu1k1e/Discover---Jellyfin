@@ -137,12 +137,13 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 |-------------|----------------|
 | GitHub Actions Race Condition | Fixed `.github/workflows/build-release.yml` rebase conflicts by stashing the modified manifest file during `git pull origin main`. |
 | Missing Modal Options | Jellyseerr's base settings API does not expose profiles or root folders. Updated `JellyseerrController.cs` to dynamically loop and fetch `/:id/profiles` for each Radarr instance and inject `activeDirectory` into the response for `discoverPage.js`. |
+| C# Compilation Error | Added missing `using System.Collections.Generic;` in `JellyseerrController.cs` to fix GitHub Actions build failure. |
 
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.14** — Phase 9 & 9b completed (1-Year upcoming + Availability engine + Modal Fix).
+**Latest Release: v1.0.15** — Phase 9 & 9b completed (1-Year upcoming + Availability engine + Modal Fix + Build Fix).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
