@@ -99,5 +99,8 @@ The application MUST adhere strictly to the native Jellyfin design system.
    - Re-wrote `Plugin.cs` to correctly intercept requests for `.js` and `.html` files instead of relying on broken stream mapping.
    - Fixed the build process `manifest.json` parsing errors by standardizing the MD5 checksum generation in the `build-release.bat` pipeline.
 
+## Phase 5: Build and Release v1.0.5 (2026-03-14) ✅
+- Tagged `v1.0.5` to trigger the automated GitHub Action workflow, bundling the KefinTweaks style auto-injection updates.
+
 ## Pending/Next Steps
 None. The plugin has achieved robust native integration for both the Sidebar and the Home Tab (Header) while automatically bootstrapping itself for a seamless end-user experience equivalent to KefinTweaks.
