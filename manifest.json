@@ -6,13 +6,13 @@
     "overview": "A native Jellyfin plugin that injects a Discover page showing upcoming TMDB movies, personalized recommendations (based on watch history), and your KefinTweaks-compatible Watchlist. Nav placement (header/sidebar) is configurable in settings. Each card supports Request on Jellyseerr and Stream Directly actions.",
     "owner": "Hu1k1e",
     "category": "General",
-    "imageUrl": "https://raw.githubusercontent.com/Hu1k1e/jellyfin-plugin-upcoming-movies/main/icon.png",
+    "imageUrl": "https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/icon.png",
     "versions": [
       {
         "version": "1.0.0.0",
         "changelog": "Initial release. Discover page with Upcoming, Recommended, and Watchlist sections. Header/sidebar nav placement configurable in plugin settings.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/Hu1k1e/jellyfin-plugin-upcoming-movies/releases/download/v1.0.0/jellyfin-plugin-upcoming-movies_v1.0.0.zip",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.0/jellyfin-plugin-upcoming-movies_v1.0.0.zip",
         "checksum": "REPLACE_WITH_SHA256_CHECKSUM_OF_ZIP",
         "timestamp": "2026-03-14T00:00:00Z"
       }

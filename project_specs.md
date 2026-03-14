@@ -61,8 +61,8 @@ The application MUST adhere strictly to the native Jellyfin design system.
 
 # 6. Current Phase & Next Action
 
-**Phase 2 Complete: Plugin Scaffolded — Ready to Push to GitHub**
-- **Next Action:** Push to GitHub, push a `v1.0.0` tag, let GitHub Actions build + publish the release, then add the manifest URL to Jellyfin's plugin repositories.
+**Phase 3 Complete: Frontend Custom Tabs Injection & GitHub Configuration**
+- **Next Action:** Push the code to GitHub from your machine (requires your GitHub authentication), tag v1.0.0, and add the manifest to Jellyfin.
 
 ---
 
@@ -70,25 +70,25 @@ The application MUST adhere strictly to the native Jellyfin design system.
 
 ## Phase 1 — Discovery & Architecture Planning (2026-03-14) ✅
 - Analyzed KefinTweaks: JS injection, Watchlist = `Filters=IsLiked`, native Jellyfin CSS classes.
+- Analyzed `jellyfin-plugin-custom-tabs`: `data-index` swapping on `.emby-tabs-slider`.
 - Confirmed Jellyfin.Controller/Model 10.11.6 NuGet packages exist.
-- Proposed C# proxy + JS injection architecture. Approved by user.
+- Proposed C# proxy + dual JS injection architecture.
 
 ## Phase 2 — Plugin Scaffolded (2026-03-14) ✅
+- Created `.csproj` targeting net9.0 and Jellyfin 10.11.6.
+- Added `PluginConfiguration.cs` with TMDB, Jellyseerr, Stream URL, and Nav Placement settings.
+- Wrote `configPage.html` using native Jellyfin components.
+- Set up C# API proxies `TmdbController` and `JellyseerrController`.
 
-| File | Purpose |
-|---|---|
-| `.csproj` | net9.0, Jellyfin 10.11.6, 3 embedded web resources |
-| `Plugin.cs` | IHasWebPages, GUID `a3f7c2e1-9b4d-4a1c-8e5f-d6b2a0c3f9e8` |
-| `PluginConfiguration.cs` | TmdbApiKey, JellyseerrUrl, JellyseerrApiKey, StreamBaseUrl, 3 toggles |
-| `configPage.html` | Plugin settings UI (native Jellyfin emby-input components) |
-| `TmdbController.cs` | Proxy: /upcoming, /recommendations, /config |
-| `JellyseerrController.cs` | Proxy: POST /request |
-| `discoverPage.html` | Discover page with 3 section containers |
-| `discoverPage.js` | Sidebar MutationObserver + data fetching + card rendering |
-| `manifest.json` | Jellyfin plugin repo manifest |
-| `build-release.yml` | GitHub Actions CI: build, ZIP, SHA256, update manifest, publish release |
+## Phase 3 — Frontend UI & GitHub CI (2026-03-14) ✅
+- **discoverPage.js**: Created dual-mode injection system.
+  - **Sidebar Mode**: Uses KefinTweaks pattern (MutationObserver on `mainDrawer`).
+  - **Header Mode**: Uses IAmParadox27 Custom Tabs pattern (injects `.emby-tab-button` and `.tabContent` directly into the Home page slider).
+- Data fetches (Upcoming, Recommendations, Watchlist) happen in parallel via `Promise.all`.
+- Updated `manifest.json` with GitHub username `Hu1k1e`.
+- Created `.github/workflows/build-release.yml` for automated ZIP builds and JSON manifest updates.
 
 ## Pending
-- Phase 3: Push to GitHub, tag v1.0.0, CI publishes first release.
-- Phase 4: Add manifest URL to Jellyfin repositories, install, configure.
-- Phase 5: End-to-end validation (all 3 sections, both action buttons).
+- Phase 4: Push code to GitHub, tag v1.0.0.
+- Phase 5: Add manifest URL to Jellyfin repositories, install, configure.
+- Phase 6: End-to-end user validation.

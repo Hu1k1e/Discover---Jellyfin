@@ -1,7 +1,7 @@
 /**
  * discoverPage.js
  * Jellyfin Plugin — Upcoming Movies & Recommendations
- * GitHub: https://github.com/Hu1k1e/jellyfin-plugin-upcoming-movies
+ * GitHub: https://github.com/Hu1k1e/Discover---Jellyfin
  *
  * Responsibilities:
  *  1. Fetches the nav placement setting (Sidebar | Header) from the plugin config.

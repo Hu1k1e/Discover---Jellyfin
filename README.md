@@ -24,7 +24,7 @@ The easiest way: add this repo URL to Jellyfin and install from the catalog.
 3. Click the **+** button
 4. Enter **any name** (e.g. `H-TV Plugins`) and paste this URL:
    ```
-   https://raw.githubusercontent.com/Hu1k1e/jellyfin-plugin-upcoming-movies/main/manifest.json
+   https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
    ```
 5. Click **Save**
 
@@ -65,7 +65,7 @@ If this is the first push:
 git init
 git add .
 git commit -m "feat: initial plugin"
-git remote add origin https://github.com/Hu1k1e/jellyfin-plugin-upcoming-movies.git
+git remote add origin https://github.com/Hu1k1e/Discover---Jellyfin.git
 git push -u origin main
 ```
 
@@ -91,7 +91,7 @@ The GitHub Actions workflow (`.github/workflows/build-release.yml`) will:
 
 After the release is published, visit:
 ```
-https://raw.githubusercontent.com/Hu1k1e/jellyfin-plugin-upcoming-movies/main/manifest.json
+https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 ```
 and confirm the `sourceUrl` and `checksum` fields have been populated.
 
