@@ -80,12 +80,13 @@ git push origin v1.0.0
 
 The GitHub Actions workflow (`.github/workflows/build-release.yml`) will:
 1. Check out the code and install .NET 9 SDK
-2. Build `Jellyfin.Plugin.UpcomingMovies.dll` in Release mode
-3. Create `jellyfin-plugin-upcoming-movies_v1.0.0.zip` (DLL only)
-4. Compute the **SHA256 checksum** of the ZIP
-5. Update `manifest.json` with the correct download URL, checksum, and timestamp
-6. Commit the updated manifest back to `main`
-7. Create a **GitHub Release** with the ZIP attached
+2. Zip the compiled `.dll`
+3. Calculate its **MD5 checksum**
+4. Create `jellyfin-plugin-upcoming-movies_v1.0.0.zip` (DLL only)
+5. Compute the **MD5 checksum** of the ZIP
+6. Update `manifest.json` with the correct download URL, checksum, and timestamp
+7. Commit the updated manifest back to `main`
+8. Create a **GitHub Release** with the ZIP attached
 
 ### Step 4 — Verify the manifest URL is correct
 
@@ -107,7 +108,7 @@ dotnet build --configuration Release -o ../publish
 ```
 
 To install manually:
-1. Copy `Jellyfin.Plugin.UpcomingMovies.dll` to your Jellyfin plugins directory:
+1. Extract `Jellyfin.Plugin.UpcomingMovies.dll` and place it in your plugins directory. The GitHub Release also contains an MD5 checksum for verification.
    - Linux: `~/.local/share/jellyfin/plugins/UpcomingMovies/`
    - Docker: map a volume to the container's `/config/plugins/UpcomingMovies/`
    - Windows: `%APPDATA%\Jellyfin\plugins\UpcomingMovies\`

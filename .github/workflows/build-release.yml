@@ -42,12 +42,12 @@ jobs:
           zip -j ../jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip \
             Jellyfin.Plugin.UpcomingMovies.dll
 
-      - name: Compute SHA256 checksum
+      - name: Compute MD5 checksum
         id: checksum
         run: |
-          CHECKSUM=$(sha256sum jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip | awk '{print $1}')
+          CHECKSUM=$(md5sum jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip | awk '{print $1}')
           echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
-          echo "Plugin ZIP SHA256: ${CHECKSUM}"
+          echo "Plugin ZIP MD5: ${CHECKSUM}"
 
       - name: Update manifest.json with new version data
         run: |
@@ -95,7 +95,7 @@ jobs:
             ### Manual Installation
             Download the ZIP below, extract the `.dll` into your Jellyfin plugins directory, and restart.
 
-            **ZIP SHA256:** `${{ steps.checksum.outputs.CHECKSUM }}`
+            **ZIP MD5:** `${{ steps.checksum.outputs.CHECKSUM }}`
           files: |
             jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip
           draft: false
