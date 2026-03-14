@@ -131,11 +131,18 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Modal Fix | Changed Jellyseerr API path from `/api/v1/radarr` to `/api/v1/settings/radarr` to properly retrieve configuration. |
 | Mixed Availability Engine | `discoverPage.js` now maps user's library (`/Items?IncludeItemTypes=Movie`) to TMDB IDs. Renders `Play` if available, `Request` if missing using precise `.jellyseerr-request-button` CSS overrides. |
 
+## Phase 9b — GitHub Actions & Modal Data Fix (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| GitHub Actions Race Condition | Fixed `.github/workflows/build-release.yml` rebase conflicts by stashing the modified manifest file during `git pull origin main`. |
+| Missing Modal Options | Jellyseerr's base settings API does not expose profiles or root folders. Updated `JellyseerrController.cs` to dynamically loop and fetch `/:id/profiles` for each Radarr instance and inject `activeDirectory` into the response for `discoverPage.js`. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.13** — Phase 9 completed (1-Year upcoming + Availability engine).
+**Latest Release: v1.0.14** — Phase 9 & 9b completed (1-Year upcoming + Availability engine + Modal Fix).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above

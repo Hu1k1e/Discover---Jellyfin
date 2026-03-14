@@ -92,6 +92,46 @@ public class JellyseerrController : ControllerBase
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            
+            // Phase 9b: The base settings endpoint does not return profiles or paths directly.
+            // We must fetch profiles dynamically for each instance so the frontend modal populates.
+            try
+            {
+                var instances = JsonSerializer.Deserialize<List<Dictionary<string, object>>>(json);
+                if (instances != null)
+                {
+                    foreach (var instance in instances)
+                    {
+                        if (instance.TryGetValue("id", out var idObj) && idObj is JsonElement idEl && idEl.TryGetInt32(out var id))
+                        {
+                            // Fetch profiles
+                            using var profReq = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/v1/settings/radarr/{id}/profiles");
+                            profReq.Headers.Add("X-Api-Key", config.JellyseerrApiKey);
+                            var profRes = await client.SendAsync(profReq).ConfigureAwait(false);
+                            if (profRes.IsSuccessStatusCode)
+                            {
+                                var profJson = await profRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                var profiles = JsonSerializer.Deserialize<List<object>>(profJson);
+                                instance["profiles"] = profiles ?? new List<object>();
+                            }
+
+                            // For root folder, Jellyseerr doesn't expose an endpoint outside of test.
+                            // We use the activeDirectory as the populated option.
+                            if (instance.TryGetValue("activeDirectory", out var adObj) && adObj is JsonElement adEl && adEl.ValueKind == JsonValueKind.String)
+                            {
+                                instance["paths"] = new List<string> { adEl.GetString() ?? "" };
+                            }
+                        }
+                    }
+                    var finalJson = JsonSerializer.Serialize(instances);
+                    return Content(finalJson, "application/json");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[UpcomingMovies] Failed to enrich Radarr instances with profiles");
+            }
+
             return Content(json, "application/json");
         }
         catch (Exception ex)

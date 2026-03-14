@@ -76,13 +76,18 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Pull latest main first to avoid race condition when local pushes overlap with GA manifest updates
+          # Stash the modified manifest before checking out main
+          git stash
+          # Pull latest main to avoid race condition when local pushes overlap
           git fetch origin main
-          git rebase origin/main || true
+          git checkout main
+          git pull origin main
+          # Restore manifest modifications
+          git stash pop || true
           git add manifest.json
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update manifest for v${{ steps.version.outputs.VERSION }}"
-          git push origin HEAD:main
+          git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
