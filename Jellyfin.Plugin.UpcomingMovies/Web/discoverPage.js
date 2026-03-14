@@ -202,9 +202,13 @@
         'Sci-Fi': 878, 'Thriller': 53, 'War': 10752, 'Western': 37
     };
 
+    // Sentinel value to detect 'API key not configured' response
+    const NEEDS_SETUP = { _needsSetup: true };
+
     async function fetchUpcoming() {
         const res = await fetch('/UpcomingMovies/tmdb/upcoming', { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
-        if (!res.ok) throw new Error('Failed to fetch upcoming');
+        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
+        if (!res.ok) throw new Error(`TMDB upstream error: ${res.status}`);
         return res.json();
     }
 
@@ -225,7 +229,8 @@
 
         const url = '/UpcomingMovies/tmdb/recommendations' + (genreIds ? `?genreIds=${genreIds}` : '');
         const res = await fetch(url, { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
-        if (!res.ok) throw new Error('Failed to fetch recommendations');
+        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
+        if (!res.ok) throw new Error(`TMDB upstream error: ${res.status}`);
         return res.json();
     }
 
@@ -354,16 +359,36 @@
         const recBox = containerDiv.querySelector('.recommended-items');
         const watBox = containerDiv.querySelector('.watchlist-items');
 
+        const SETUP_MSG = `<div class="discover-error" style="font-size:1em;line-height:1.6">
+            ⚠️ <strong>TMDB API key not configured.</strong><br>
+            Go to <strong>Dashboard → Plugins → Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>
+            <a href="#/configurationpage?name=Upcoming Movies %26 Recommendations" style="color:#90caf9">Open Plugin Settings →</a>
+        </div>`;
+
+        // Helper to detect setup sentinel or null
+        const isSetup = v => v && v._needsSetup;
+
         // Fetch concurrently
         const [upc, rec, wat] = await Promise.all([
-            config.showUpcoming ? fetchUpcoming().catch(() => null) : null,
-            config.showRecommendations ? fetchRecommendations().catch(() => null) : null,
-            config.showWatchlist ? fetchWatchlist().catch(() => null) : null,
+            config.showUpcoming ? fetchUpcoming().catch(e => { ERR('fetchUpcoming:', e); return null; }) : null,
+            config.showRecommendations ? fetchRecommendations().catch(e => { ERR('fetchRecommendations:', e); return null; }) : null,
+            config.showWatchlist ? fetchWatchlist().catch(e => { ERR('fetchWatchlist:', e); return null; }) : null,
         ]);
 
-        if (upcBox) { if (upc) renderCards(upc.results, upcBox, streamBaseUrl); else upcBox.innerHTML = '<div class="discover-error">Failed to load Upcoming Movies</div>'; }
-        if (recBox) { if (rec) renderCards(rec.results, recBox, streamBaseUrl); else recBox.innerHTML = '<div class="discover-error">Failed to load Recommendations</div>'; }
-        if (watBox) { if (wat) renderJellyfinCards(wat.Items, watBox, streamBaseUrl); else watBox.innerHTML = '<div class="discover-error">Failed to load Watchlist</div>'; }
+        if (upcBox) {
+            if (isSetup(upc))      upcBox.innerHTML = SETUP_MSG;
+            else if (upc)          renderCards(upc.results, upcBox, streamBaseUrl);
+            else                   upcBox.innerHTML = '<div class="discover-error">Failed to load Upcoming Movies. Check browser console for details.</div>';
+        }
+        if (recBox) {
+            if (isSetup(rec))      recBox.innerHTML = SETUP_MSG;
+            else if (rec)          renderCards(rec.results, recBox, streamBaseUrl);
+            else                   recBox.innerHTML = '<div class="discover-error">Failed to load Recommendations. Check browser console for details.</div>';
+        }
+        if (watBox) {
+            if (wat)               renderJellyfinCards(wat.Items, watBox, streamBaseUrl);
+            else                   watBox.innerHTML = '<div class="discover-error">Failed to load Watchlist. Check browser console for details.</div>';
+        }
 
         _renderingContainers.delete(containerDiv);
     }
