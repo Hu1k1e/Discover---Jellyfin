@@ -28,43 +28,48 @@ The easiest way: add this repo URL to Jellyfin and install from the catalog.
    ```
 5. Click **Save**
 
-### Step 2 — Install the plugin
+### Using the Included Build Automation (Windows)
 
-1. Go to **Dashboard → Plugins → Catalog**
-2. Search for **Upcoming Movies & Recommendations**
-3. Click it → **Install**
-4. **Restart Jellyfin** when prompted
+1. Double-click the `build-release.bat` file in the root directory.
+2. This will bundle `discoverPage.js` and other necessary files into a freshly generated `.zip` inside the `bin/Release/` directory.
+3. The script also automatically computes the necessary MD5 checksum for the new zip and injects it into the matching `manifest.json`.
+4. Your plugin is now ready to be deployed or updated in Jellyfin via the dashboard's "Repositories" feature.
 
-### Step 2 — Configure the Plugin
+If you don't use the `.bat` script, you must manually run the PowerShell script to generate the MD5 hash of your ZIP and paste it into `manifest.json`, otherwise Jellyfin will reject the installation with a "deserialization" or format error.
 
-1. Go to **Dashboard → Plugins → Upcoming Movies & Recommendations → Settings**
-2. Fill out all the necessary API configuration (TMDB, Jellyseerr, Stream Base URL).
-3. Choose your preferred **Nav Placement** (Sidebar or Header).
-4. Click **Save**.
+## Step 3: Configure the Native Frontend
 
-### Step 3 — Setup the UI Integrations (CRITICAL)
+Depending on where you want the Discover page to appear, follow one of the configurations below:
 
-Because this is a native C# plugin without invasive core-file patching, you must configure Jellyfin to display the "Discover" tab using your preferred method.
+### Option A: Header Mode (Automatic KefinTweaks Style)
+This option relies on the **Custom Tabs** and **JS Injector** plugins. Our plugin will automatically detect your Custom Tab and inject a "Discover" link into your Sidebar (which custom CSS themes then move into your Header).
 
-**First, load the background script:**
-1. Install the **JS Injector** Jellyfin plugin.
-2. In JS Injector settings, add a new script with the following URL:
-   `/web/ConfigurationPage?name=discoverPage.js`
+1. Go to **Dashboard -> Plugins -> Custom Tabs**.
+2. Add a new tab named **Discover**.
+3. Set the HTML content of the tab exactly to:
+   ```html
+   <div class="sections upcoming-movies-plugin" style="padding: 1em;"></div>
+   ```
+   **CRITICAL WARNING:** Do NOT copy the iframe example (`<iframe src="YOUR_REQUEST_SERVICE_HERE">`) from KefinTweaks! That will cause a 404 error and a completely blank page. You MUST use the exact HTML `div` above so our Javascript can find the container and render the movies natively!
+4. Go to **Dashboard -> Plugins -> JS Injector**.
+5. Add a new Script named **Discover Plugin Script**.
+6. Set the Script URL to the raw GitHub URL for `discoverPage.js` or copy the entire contents of `Jellyfin.Plugin.UpcomingMovies/Web/discoverPage.js` into the text box.
+7. Restart Jellyfin or refresh your browser. The "Discover" link will automatically appear!
 
-**Next, choose your display location:**
+### Option B: Sidebar Mode (Manual Dashboard Routing)
+If you don't use Custom Tabs, you can load the Discover page natively in the sidebar:
 
-#### Option A: Sidebar (Native)
-1. Go to **Dashboard → Display** in Jellyfin.
-2. Under **Custom Menu Links JSON**, add a new link pointing to:
-   `#!/configurationpage?name=discoverPage`
-3. Save and refresh.
-
-#### Option B: Header (via Custom Tabs)
-1. Install the **Custom Tabs** and **File Transformation** plugins.
-2. In Custom Tabs, create a new tab named **Discover**.
-3. Set the HTML content of the tab to:
-   `<div class="sections upcoming-movies-plugin"></div>`
-4. The plugin will automatically detect this tab and render the movie grid inside it when clicked.
+1. Go to **Dashboard -> Display -> Custom Menu Links JSON**.
+2. Add a new entry like this:
+   ```json
+   {
+       "name": "Discover",
+       "icon": "explore",
+       "url": "/UpcomingMovies/UI/Discover",
+       "menuLocation": "Sidebar"
+   }
+   ```
+3. Refresh the page. You'll now have a Discover button in the main sidebar that loads the full-page interface natively.
 
 | Setting | Description |
 |---|---|

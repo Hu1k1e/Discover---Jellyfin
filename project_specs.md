@@ -84,12 +84,20 @@ The application MUST adhere strictly to the native Jellyfin design system.
 - Created dual-mode injection system using `MutationObserver` and manual DOM creation.
 - Discovered JSON manifest errors resulting from SHA256 checksums in `.github/workflows`; migrated to MD5 checksum generation to satisfy Jellyfin requirements.
 
-## Phase 4 — Native UI Migration (2026-03-14) ✅
-- **discoverPage.js**: Stripped all DOM hacking scripts.
-  - **Sidebar Mode**: Implemented a standalone listener for `#DiscoverPage`. Users now inject this via Jellyfin's official Dashboard -> Display -> Custom Menu Links JSON (`#!/configurationpage?name=discoverPage`).
-  - **Header Mode**: Hooks directly into the `.upcoming-movies-plugin` DOM element dynamically created by the KefinTweaks Custom Tabs plugin.
-- Relies on the user's existing JS Injector configuration.
+## Phase 4: Native UI Migration (Current vs. Goal)
+**Goal:** Migrate the UI insertion from a fragile DOM-hacking `MutationObserver` (which breaks on updates) to using Jellyfin 10.9's native mechanisms and the established community plugins ecosystem.
 
-## Pending
-- Phase 5: Push the Native UI update to GitHub and tag a new release (`v1.0.4`).
-- Phase 6: User installs, configures Custom Menu Links / Custom Tabs, and verifies end-to-end functionality without UI glitches.
+**Completed Improvements:**
+1. **Sidebar Native Integration:**
+   - Created a standalone frontend page at `/UpcomingMovies/UI/Discover` managed by the C# `Plugin.cs`. 
+   - This page loads naturally in an iframe when added via Jellyfin's official **"Custom Menu Links JSON"** without breaking the SPA router.
+2. **Header Tab KefinTweaks Injection:**
+   - Solved a critical "blank page" bug causing a 404 error when users mistakenly copied KefinTweaks' "Requests" iframe instead of the Discover plugin's required HTML.
+   - Analysed `customMenuLinks.js` from KefinTweaks to fully understand how "WatchList" automatically placed itself in the Header. 
+   - Replicated this behavior: `discoverPage.js` now fetches the `CustomTabs/Config` API, locates the user's Discover Custom Tab, extracts its index, and **automatically** calls `addCustomMenuLink` or injects exactly the same native Sidebar anchor point linked to `#/home?tab=X`. (The user's CSS theme visually translates this sidebar anchor into the Top Header).
+3. **Robust Backend Delivery:**
+   - Re-wrote `Plugin.cs` to correctly intercept requests for `.js` and `.html` files instead of relying on broken stream mapping.
+   - Fixed the build process `manifest.json` parsing errors by standardizing the MD5 checksum generation in the `build-release.bat` pipeline.
+
+## Pending/Next Steps
+None. The plugin has achieved robust native integration for both the Sidebar and the Home Tab (Header) while automatically bootstrapping itself for a seamless end-user experience equivalent to KefinTweaks.

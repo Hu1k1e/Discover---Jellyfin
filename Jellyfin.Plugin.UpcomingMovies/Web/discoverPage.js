@@ -406,4 +406,92 @@
         });
     }, 500);
 
+    // Hook C: Auto-Inject sidebar link for KefinTweaks-like Header Integration
+    async function injectHeaderLinkIfConfigured() {
+        if (!window.ApiClient || !window.ApiClient.accessToken) return;
+        try {
+            const token = window.ApiClient.accessToken();
+            const server = window.ApiClient._serverAddress;
+            if (!token || !server) return;
+
+            // 1. Check if user configured a Custom Tab for Discover
+            const res = await fetch(`${server}/CustomTabs/Config`, {
+                headers: { 'X-Emby-Token': token, 'Content-Type': 'application/json' }
+            });
+
+            if (!res.ok) return; // Custom Tabs plugin not installed or accessible
+            
+            const tabs = await res.json();
+            if (!Array.isArray(tabs)) return;
+
+            // 2. Find the index of the tab containing our target class
+            let discoverTabIndex = -1;
+            tabs.forEach((tab, index) => {
+                if (tab && tab.ContentHtml && tab.ContentHtml.includes('upcoming-movies-plugin')) {
+                    // Custom Tabs displays after 'Home' and 'Favorites' (which are index 0 and 1)
+                    discoverTabIndex = index + 2;
+                }
+            });
+
+            if (discoverTabIndex === -1) return; // Discover tab not configured in Custom Tabs
+            
+            const targetUrl = `#/home?tab=${discoverTabIndex}`;
+            const linkName = "Discover";
+            const iconName = "explore";
+
+            LOG(`Found Discover Custom Tab at index ${discoverTabIndex}. Auto-injecting link...`);
+
+            // 3. Inject the link
+            if (window.KefinTweaksUtils && typeof window.KefinTweaksUtils.addCustomMenuLink === 'function') {
+                // If KefinTweaks is active, use its native utility to ensure perfect compatibility
+                window.KefinTweaksUtils.addCustomMenuLink(linkName, iconName, targetUrl, false);
+            } else {
+                // Fallback: Manually inject if KefinTweaksUtils isn't loaded but Custom Tabs is
+                const containerSelector = '.customMenuOptions';
+                
+                const addLinkToContainer = (container) => {
+                    if (container.querySelector(`a[href="${targetUrl}"]`)) return; // Already exists
+                    
+                    const link = document.createElement('a');
+                    link.setAttribute('is', 'emby-linkbutton');
+                    link.className = 'emby-button navMenuOption lnkMediaFolder';
+                    link.href = targetUrl;
+                    
+                    link.innerHTML = `
+                        <span class="material-icons navMenuOptionIcon ${iconName}" aria-hidden="true"></span>
+                        <span class="navMenuOptionText">${linkName}</span>
+                    `;
+                    container.appendChild(link);
+                    LOG('Successfully injected standalone Custom Menu Link for Discover.');
+                };
+
+                const existingContainer = document.querySelector(containerSelector);
+                if (existingContainer) {
+                    addLinkToContainer(existingContainer);
+                } else {
+                    const observer = new MutationObserver((mutations, obs) => {
+                        const container = document.querySelector(containerSelector);
+                        if (container) {
+                            addLinkToContainer(container);
+                            obs.disconnect();
+                        }
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true });
+                }
+            }
+
+        } catch (err) {
+            WARN('Failed to auto-inject header link:', err);
+        }
+    }
+
+    // Attempt injection after ApiClient is initialized
+    if (window.ApiClient && window.ApiClient.accessToken) {
+        injectHeaderLinkIfConfigured();
+    } else {
+        document.addEventListener('apiclientready', injectHeaderLinkIfConfigured, { once: true });
+        // Fallback timeout in case event doesn't fire
+        setTimeout(injectHeaderLinkIfConfigured, 3000);
+    }
+
 })();
