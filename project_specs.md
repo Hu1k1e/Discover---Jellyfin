@@ -141,5 +141,6 @@ discoverPage.js runs → watches for .upcoming-movies-plugin in Custom Tabs DOM 
 3. Plugin TMDB API key configured in Dashboard → Plugins → Upcoming Movies & Recommendations ✅
 
 ## Pending/Next Steps
-- After the user installs v1.0.6 from the updated manifest, the Discover tab should populate automatically.
-- No JS Injector configuration is needed.
+- User must install v1.0.9 from the updated plugin manifest.
+- User must enter TMDB API Key in **Dashboard → Plugins → Upcoming Movies & Recommendations.**
+- After both steps: Discover tab will show Upcoming Movies, Recommendations, and Watchlist sections with movie cards.
