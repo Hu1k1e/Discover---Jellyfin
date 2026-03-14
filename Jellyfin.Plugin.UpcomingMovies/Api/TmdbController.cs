@@ -54,7 +54,12 @@ public class TmdbController : ControllerBase
             }
 
             var client = _httpClientFactory.CreateClient();
-            var url = $"{TmdbBaseUrl}/movie/upcoming?api_key={apiKey}&language=en-US&page={page}";
+            
+            // Phase 9: Request future movies up to 1 year in advance
+            var todayStr = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var oneYearStr = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
+            var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&page={page}&primary_release_date.gte={todayStr}&primary_release_date.lte={oneYearStr}&sort_by=primary_release_date.asc&with_release_type=2|3";
+            
             var response = await client.GetAsync(url).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
@@ -65,42 +70,7 @@ public class TmdbController : ControllerBase
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-            // Filter server-side: only include movies not yet released (release_date >= today)
-            // This supplements TMDB's own "upcoming" filter which may include recently released films.
-            try
-            {
-                var doc = JsonDocument.Parse(json);
-                var today = DateTime.UtcNow.Date;
-                var filtered = new List<JsonElement>();
-
-                if (doc.RootElement.TryGetProperty("results", out var results))
-                {
-                    foreach (var movie in results.EnumerateArray())
-                    {
-                        if (movie.TryGetProperty("release_date", out var rd)
-                            && DateTime.TryParse(rd.GetString(), out var releaseDate)
-                            && releaseDate.Date >= today)
-                        {
-                            filtered.Add(movie);
-                        }
-                    }
-                }
-
-                // Rebuild the response with the filtered list
-                var filteredJson = JsonSerializer.Serialize(new
-                {
-                    results = filtered,
-                    total_results = filtered.Count,
-                    page = page,
-                    _filtered = true
-                });
-                return Content(filteredJson, "application/json");
-            }
-            catch (Exception parseEx)
-            {
-                _logger.LogWarning(parseEx, "[UpcomingMovies] Could not filter upcoming results, returning raw");
-                return Content(json, "application/json");
-            }
+            return Content(json, "application/json");
         }
         catch (Exception ex)
         {

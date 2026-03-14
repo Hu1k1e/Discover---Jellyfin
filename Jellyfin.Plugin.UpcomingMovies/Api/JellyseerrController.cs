@@ -80,7 +80,7 @@ public class JellyseerrController : ControllerBase
 
             var baseUrl = config.JellyseerrUrl.TrimEnd('/');
             var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/v1/radarr");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/v1/settings/radarr");
             request.Headers.Add("X-Api-Key", config.JellyseerrApiKey);
 
             var response = await client.SendAsync(request).ConfigureAwait(false);
