@@ -139,11 +139,19 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Missing Modal Options | Jellyseerr's base settings API does not expose profiles or root folders. Updated `JellyseerrController.cs` to dynamically loop and fetch `/:id/profiles` for each Radarr instance and inject `activeDirectory` into the response for `discoverPage.js`. |
 | C# Compilation Error | Added missing `using System.Collections.Generic;` in `JellyseerrController.cs` to fix GitHub Actions build failure. |
 
+## Phase 10 — Comprehensive Data & Algorithm Upgrades (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Missing Root Folders | The previous `activeDirectory` fix only returned the default folder. Updated `JellyseerrController.cs` to extract all root folders unconditionally by submitting a background `POST` request to the proxy `/api/v1/settings/radarr/test` endpoint on behalf of the user. |
+| Empty Recommendations | Fixed `discoverPage.js` algorithm which was separating Top Genres using a comma (TMDB interpretation: AND) instead of a pipe `|` (TMDB interpretation: OR). This caused the algorithm to filter out 99% of movies instead of broadening the net based on Watch History. |
+| Obscure Upcoming | Refined the TMDB Upcoming endpoint parameters in `TmdbController.cs` to enforce Hollywood blockbusters: added `with_original_language=en`, `region=US`, and `sort_by=popularity.desc`. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.15** — Phase 9 & 9b completed (1-Year upcoming + Availability engine + Modal Fix + Build Fix).
+**Latest Release: v1.0.16** — Phase 10 completed (Root Folders, Algorithm & Upcoming Improvements).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above

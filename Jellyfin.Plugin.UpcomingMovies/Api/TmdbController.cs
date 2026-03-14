@@ -58,7 +58,7 @@ public class TmdbController : ControllerBase
             // Phase 9: Request future movies up to 1 year in advance
             var todayStr = DateTime.UtcNow.ToString("yyyy-MM-dd");
             var oneYearStr = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
-            var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&page={page}&primary_release_date.gte={todayStr}&primary_release_date.lte={oneYearStr}&sort_by=primary_release_date.asc&with_release_type=2|3";
+            var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&page={page}&primary_release_date.gte={todayStr}&primary_release_date.lte={oneYearStr}&sort_by=popularity.desc&with_release_type=2|3&with_original_language=en&region=US";
             
             var response = await client.GetAsync(url).ConfigureAwait(false);
 
