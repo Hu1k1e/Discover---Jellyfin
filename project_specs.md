@@ -61,8 +61,8 @@ The application MUST adhere strictly to the native Jellyfin design system.
 
 # 6. Current Phase & Next Action
 
-**Phase 3 Complete: Frontend Custom Tabs Injection & GitHub Configuration**
-- **Next Action:** Instruct the user on the Jellyfin architecture quirk (JS injection requires the Custom HTML snippet in the Jellyfin Dashboard) so the frontend renders.
+**Phase 4 Complete: Native Integrations Implemented**
+- **Next Action:** Push the new architecture to GitHub. The user will then install the updated plugin and configure the JS Injector, Custom Menu Links, and Custom Tabs.
 
 ---
 
@@ -80,15 +80,16 @@ The application MUST adhere strictly to the native Jellyfin design system.
 - Wrote `configPage.html` using native Jellyfin components.
 - Set up C# API proxies `TmdbController` and `JellyseerrController`.
 
-## Phase 3 — Frontend UI & GitHub CI (2026-03-14) ✅
-- **discoverPage.js**: Created dual-mode injection system.
-  - **Sidebar Mode**: Uses KefinTweaks pattern (MutationObserver on `mainDrawer`).
-  - **Header Mode**: Uses IAmParadox27 Custom Tabs pattern (injects `.emby-tab-button` and `.tabContent` directly into the Home page slider).
-- Data fetches (Upcoming, Recommendations, Watchlist) happen in parallel via `Promise.all`.
-- Updated `manifest.json` with GitHub username `Hu1k1e`.
-- Created `.github/workflows/build-release.yml` for automated ZIP builds and JSON manifest updates.
+## Phase 3 — Legacy Frontend UI & GitHub CI (2026-03-14) ✅
+- Created dual-mode injection system using `MutationObserver` and manual DOM creation.
+- Discovered JSON manifest errors resulting from SHA256 checksums in `.github/workflows`; migrated to MD5 checksum generation to satisfy Jellyfin requirements.
+
+## Phase 4 — Native UI Migration (2026-03-14) ✅
+- **discoverPage.js**: Stripped all DOM hacking scripts.
+  - **Sidebar Mode**: Implemented a standalone listener for `#DiscoverPage`. Users now inject this via Jellyfin's official Dashboard -> Display -> Custom Menu Links JSON (`#!/configurationpage?name=discoverPage`).
+  - **Header Mode**: Hooks directly into the `.upcoming-movies-plugin` DOM element dynamically created by the KefinTweaks Custom Tabs plugin.
+- Relies on the user's existing JS Injector configuration.
 
 ## Pending
-- Phase 4: Push code to GitHub, tag release. **(Done)**
-- Phase 5: Add manifest URL to Jellyfin repositories, install, configure. **(Done)**
-- Phase 6: Inject the UI JS via Dashboard -> General -> Custom HTML code, and perform end-to-end user validation.
+- Phase 5: Push the Native UI update to GitHub and tag a new release (`v1.0.4`).
+- Phase 6: User installs, configures Custom Menu Links / Custom Tabs, and verifies end-to-end functionality without UI glitches.

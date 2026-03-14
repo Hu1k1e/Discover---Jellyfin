@@ -42,18 +42,29 @@ The easiest way: add this repo URL to Jellyfin and install from the catalog.
 3. Choose your preferred **Nav Placement** (Sidebar or Header).
 4. Click **Save**.
 
-### Step 3 — Inject Frontend Script (CRITICAL)
+### Step 3 — Setup the UI Integrations (CRITICAL)
 
-Because this is a native C# plugin without invasive core-file patching, you must expose the frontend Javascript to the Jellyfin client manually. This is the official and safest way to load custom UI logic.
+Because this is a native C# plugin without invasive core-file patching, you must configure Jellyfin to display the "Discover" tab using your preferred method.
 
-1. Go to **Dashboard → General** in Jellyfin.
-2. Scroll to the bottom to find the **Custom HTML code** input box.
-3. Paste the following script tag exactly as written:
-   ```html
-   <script src="/web/ConfigurationPage?name=discoverPage.js"></script>
-   ```
-4. Click **Save**.
-5. Refresh your Jellyfin browser tab. The plugin's UI will now appear in your selected location!
+**First, load the background script:**
+1. Install the **JS Injector** Jellyfin plugin.
+2. In JS Injector settings, add a new script with the following URL:
+   `/web/ConfigurationPage?name=discoverPage.js`
+
+**Next, choose your display location:**
+
+#### Option A: Sidebar (Native)
+1. Go to **Dashboard → Display** in Jellyfin.
+2. Under **Custom Menu Links JSON**, add a new link pointing to:
+   `#!/configurationpage?name=discoverPage`
+3. Save and refresh.
+
+#### Option B: Header (via Custom Tabs)
+1. Install the **Custom Tabs** and **File Transformation** plugins.
+2. In Custom Tabs, create a new tab named **Discover**.
+3. Set the HTML content of the tab to:
+   `<div class="sections upcoming-movies-plugin"></div>`
+4. The plugin will automatically detect this tab and render the movie grid inside it when clicked.
 
 | Setting | Description |
 |---|---|
@@ -61,11 +72,7 @@ Because this is a native C# plugin without invasive core-file patching, you must
 | **Jellyseerr URL** | Your Jellyseerr instance URL, e.g. `https://jellyseerr.yourdomain.com` |
 | **Jellyseerr API Key** | Jellyseerr → Settings → General → API Key |
 | **Stream Base URL** | e.g. `https://stream.hulksmash.ca/movie/` — TMDB ID is appended |
-| **Discover Link Location** | `Sidebar` (left drawer) or `Header` (top tab bar) |
 | **Section toggles** | Show/hide Upcoming, Recommended, Watchlist independently |
-
-3. Click **Save**
-4. **Hard-refresh the browser** (Ctrl+Shift+R) to see the Discover link appear
 
 ---
 
