@@ -1,8 +1,5 @@
 using System;
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -17,133 +14,127 @@ namespace Jellyfin.Plugin.UpcomingMovies.Api;
 /// </summary>
 [ApiController]
 [Route("UpcomingMovies/tmdb")]
-[Authorize(Policy = "DefaultAuthorization")]
 public class TmdbController : ControllerBase
 {
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
-    private static readonly HttpClient _httpClient = new HttpClient();
     private readonly ILogger<TmdbController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TmdbController"/> class.
     /// </summary>
     /// <param name="logger">Logger instance.</param>
-    public TmdbController(ILogger<TmdbController> logger)
+    /// <param name="httpClientFactory">HTTP client factory from DI.</param>
+    public TmdbController(ILogger<TmdbController> logger, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     /// <summary>
     /// Proxies a request to TMDB's /movie/upcoming endpoint.
-    /// Returns upcoming movie listings for the Discover page.
     /// </summary>
-    /// <param name="page">Page number for pagination (default 1).</param>
-    /// <returns>TMDB upcoming movies JSON response.</returns>
     [HttpGet("upcoming")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> GetUpcoming([FromQuery] int page = 1)
     {
-        var apiKey = Plugin.Instance?.Configuration.TmdbApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
-        }
-
         try
         {
+            var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogWarning("[UpcomingMovies] TMDB API key is not configured.");
+                return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
+            }
+
+            var client = _httpClientFactory.CreateClient();
             var url = $"{TmdbBaseUrl}/movie/upcoming?api_key={apiKey}&language=en-US&page={page}";
-            var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+            var response = await client.GetAsync(url).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TMDB /upcoming returned {StatusCode}", response.StatusCode);
+                _logger.LogWarning("[UpcomingMovies] TMDB /upcoming returned {StatusCode}", response.StatusCode);
                 return StatusCode((int)response.StatusCode, new { error = "TMDB API returned an error." });
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             return Content(json, "application/json");
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to reach TMDB API for /upcoming");
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "Could not reach TMDB API." });
+            _logger.LogError(ex, "[UpcomingMovies] Unhandled exception in GetUpcoming");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
 
     /// <summary>
-    /// Proxies a request to TMDB's /movie/top_rated endpoint as a lightweight
-    /// fallback for "recommendations" when personalised data is unavailable.
-    /// The frontend enriches this with watch history genre filtering via the Jellyfin API.
+    /// Proxies a request to TMDB's /discover/movie endpoint for personalized recommendations.
     /// </summary>
-    /// <param name="genreIds">Comma-separated list of TMDB genre IDs to filter by.</param>
-    /// <param name="page">Page number for pagination (default 1).</param>
-    /// <returns>TMDB discover movies JSON response.</returns>
     [HttpGet("recommendations")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> GetRecommendations([FromQuery] string genreIds = "", [FromQuery] int page = 1)
     {
-        var apiKey = Plugin.Instance?.Configuration.TmdbApiKey;
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
-        }
-
         try
         {
+            var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogWarning("[UpcomingMovies] TMDB API key is not configured.");
+                return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
+            }
+
+            var client = _httpClientFactory.CreateClient();
             var genreFilter = string.IsNullOrWhiteSpace(genreIds) ? string.Empty : $"&with_genres={genreIds}";
             var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=200&page={page}{genreFilter}";
-            var response = await _httpClient.GetAsync(url).ConfigureAwait(false);
+            var response = await client.GetAsync(url).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogWarning("TMDB /discover returned {StatusCode}", response.StatusCode);
+                _logger.LogWarning("[UpcomingMovies] TMDB /discover returned {StatusCode}", response.StatusCode);
                 return StatusCode((int)response.StatusCode, new { error = "TMDB API returned an error." });
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             return Content(json, "application/json");
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to reach TMDB API for /discover");
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "Could not reach TMDB API." });
+            _logger.LogError(ex, "[UpcomingMovies] Unhandled exception in GetRecommendations");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
 
     /// <summary>
-    /// Returns the current plugin configuration visible to authenticated clients.
-    /// Only exposes non-sensitive display settings (no API keys).
+    /// Returns public-safe plugin configuration (no secrets exposed).
     /// </summary>
-    /// <returns>Public plugin configuration subset.</returns>
     [HttpGet("config")]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetPublicConfig()
     {
-        var config = Plugin.Instance?.Configuration;
-        if (config is null)
+        try
         {
+            var config = Plugin.Instance?.Configuration;
             return Ok(new
             {
-                streamBaseUrl = string.Empty,
-                navPlacement = "Sidebar",
-                showUpcoming = true,
-                showRecommendations = true,
-                showWatchlist = true
+                streamBaseUrl = config?.StreamBaseUrl ?? string.Empty,
+                navPlacement = config?.NavPlacement.ToString() ?? "Sidebar",
+                showUpcoming = config?.ShowUpcomingSection ?? true,
+                showRecommendations = config?.ShowRecommendationsSection ?? true,
+                showWatchlist = config?.ShowWatchlistSection ?? true,
+                tmdbConfigured = !string.IsNullOrWhiteSpace(config?.TmdbApiKey)
             });
         }
-
-        return Ok(new
+        catch (Exception ex)
         {
-            streamBaseUrl = config.StreamBaseUrl,
-            navPlacement = config.NavPlacement.ToString(),
-            showUpcoming = config.ShowUpcomingSection,
-            showRecommendations = config.ShowRecommendationsSection,
-            showWatchlist = config.ShowWatchlistSection
-        });
+            _logger.LogError(ex, "[UpcomingMovies] Error in GetPublicConfig");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
+        }
     }
 }
-

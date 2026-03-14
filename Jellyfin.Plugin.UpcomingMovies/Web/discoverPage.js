@@ -39,7 +39,8 @@
             streamBaseUrl: '',
             showUpcoming: true,
             showRecommendations: true,
-            showWatchlist: true
+            showWatchlist: true,
+            tmdbConfigured: false
         };
     }
 
@@ -54,113 +55,137 @@
     }
 
     // ──────────────────────────────────────────────────────────
-    // 2. TEMPLATES
+    // 2. STYLES — Native Jellyfin card look
     // ──────────────────────────────────────────────────────────
 
     function injectStyles() {
         if (document.getElementById('discover-plugin-styles')) return;
         const style = document.createElement('style');
         style.id = 'discover-plugin-styles';
-        style.innerHTML = `
+        style.textContent = `
             .discover-page-content { padding: 1.5rem 0; width: 100%; box-sizing: border-box; }
             .discover-section { margin-bottom: 2.5rem; }
             .discover-section-title { margin-bottom: 1rem; font-size: 1.25em; padding: 0 5%; font-weight: 500; }
-            
+
             .discover-row {
                 display: flex;
                 overflow-x: auto;
                 overflow-y: hidden;
-                white-space: nowrap;
-                padding-bottom: 15px;
-                padding: 0 5%;
+                padding: 0 5% 12px 5%;
                 scroll-snap-type: x mandatory;
-                gap: 15px;
+                gap: 12px;
             }
-            .discover-row::-webkit-scrollbar { height: 8px; }
+            .discover-row::-webkit-scrollbar { height: 6px; }
             .discover-row::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 4px; }
             .discover-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
-            
+
+            /* ── Card ── */
             .discover-card {
-                display: inline-block;
-                position: relative;
-                width: 160px;
-                flex: 0 0 auto;
-                scroll-snap-align: start;
-                background: rgba(0,0,0,0.2);
-                border-radius: var(--rounding, 4px);
-                overflow: hidden;
-                transition: transform 0.2s;
-            }
-            .discover-card:hover { transform: scale(1.05); }
-            .discover-card img {
-                width: 100%;
-                height: 240px;
-                object-fit: cover;
-                display: block;
-                background: #111;
-            }
-            .no-poster {
-                width: 100%;
-                height: 240px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background: #222;
-                color: #fff;
-                font-size: 2em;
-            }
-            
-            .discover-card-overlay {
-                position: absolute;
-                top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.85);
-                display: flex;
+                display: inline-flex;
                 flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                opacity: 0;
-                transition: opacity 0.2s;
-                gap: 10px;
-                padding: 10px;
-            }
-            .discover-card:hover .discover-card-overlay { opacity: 1; }
-            .discover-card-overlay button {
-                width: 100%;
-                padding: 8px 5px;
-                border: none;
+                flex: 0 0 auto;
+                width: 150px;
                 border-radius: 4px;
-                cursor: pointer;
-                font-size: 0.85em;
-                font-weight: bold;
-                color: #fff;
-            }
-            
-            .btn-request { background-color: var(--theme-primary-color, #00a4dc); }
-            .btn-request:hover { opacity: 0.8; }
-            .btn-jellyfin { background-color: #2e7d32; }
-            .btn-jellyfin:hover { background-color: #1b5e20; }
-            .btn-stream { background-color: #d32f2f; }
-            .btn-stream:hover { background-color: #b71c1c; }
-            
-            .discover-card-title {
-                padding: 8px 5px 2px 5px;
-                font-size: 0.9em;
-                white-space: nowrap;
                 overflow: hidden;
-                text-overflow: ellipsis;
+                cursor: pointer;
+                scroll-snap-align: start;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                background: rgba(255,255,255,0.04);
             }
-            .discover-card-date {
-                padding: 0 5px 8px 5px;
-                font-size: 0.8em;
-                color: #aaa;
+            .discover-card:hover { transform: scale(1.04); box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+
+            /* ── Poster wrapper — holds image + overlays ── */
+            .discover-card .dc-poster {
+                position: relative;
+                width: 150px;
+                height: 225px;
+                overflow: hidden;
+                background: #111;
+                flex-shrink: 0;
             }
-            
+            .discover-card .dc-poster img {
+                width: 100%; height: 100%;
+                object-fit: cover; display: block;
+            }
+            .dc-no-poster {
+                width: 100%; height: 100%;
+                display: flex; align-items: center; justify-content: center;
+                background: #1a1a2e; color: #888; font-size: 2em;
+            }
+
+            /* ── Jellyfin-style semi-dark overlay + centered play circle ── */
+            .dc-overlay {
+                position: absolute;
+                inset: 0;
+                background: rgba(0,0,0,0.52);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                opacity: 0;
+                transition: opacity 0.18s ease;
+            }
+            .discover-card:hover .dc-overlay { opacity: 1; }
+
+            .dc-play-btn {
+                width: 48px; height: 48px;
+                border-radius: 50%;
+                border: 2px solid rgba(255,255,255,0.85);
+                background: rgba(255,255,255,0.12);
+                display: flex; align-items: center; justify-content: center;
+                transition: background 0.15s;
+                pointer-events: none;
+            }
+            .dc-play-btn svg { width: 22px; height: 22px; fill: #fff; margin-left: 3px; }
+
+            /* ── Bottom action bar ── */
+            .dc-actions {
+                position: absolute;
+                bottom: 0; left: 0; right: 0;
+                padding: 5px 7px;
+                display: flex; gap: 5px;
+                background: linear-gradient(transparent, rgba(0,0,0,0.92));
+                opacity: 0;
+                transition: opacity 0.18s ease;
+            }
+            .discover-card:hover .dc-actions { opacity: 1; }
+            .dc-actions button {
+                flex: 1;
+                padding: 4px 3px;
+                border-radius: 3px;
+                cursor: pointer;
+                font-size: 0.70em;
+                font-weight: 700;
+                letter-spacing: 0.02em;
+                white-space: nowrap;
+                transition: background 0.12s;
+                background: rgba(0,0,0,0.45);
+            }
+            .btn-jellyfin { border: 1px solid #4caf50; color: #4caf50 !important; }
+            .btn-jellyfin:hover { background: rgba(76,175,80,0.3) !important; }
+            .btn-request  { border: 1px solid var(--theme-primary-color, #00a4dc); color: var(--theme-primary-color, #00a4dc) !important; }
+            .btn-request:hover  { background: rgba(0,164,220,0.3) !important; }
+            .btn-stream   { border: 1px solid #ef5350; color: #ef5350 !important; }
+            .btn-stream:hover   { background: rgba(239,83,80,0.3) !important; }
+
+            /* ── Card meta below poster ── */
+            .dc-title {
+                padding: 6px 7px 2px 7px;
+                font-size: 0.84em; font-weight: 500;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                color: #e0e0e0;
+            }
+            .dc-date { padding: 0 7px 7px 7px; font-size: 0.77em; color: #888; }
+
             .discover-loading, .discover-error { padding: 20px 5%; color: #aaa; }
-            .discover-error { color: #d32f2f; }
+            .discover-error { color: #ef5350; line-height: 1.7; }
             .discover-hidden { display: none !important; }
         `;
         document.head.appendChild(style);
     }
+
+    // ──────────────────────────────────────────────────────────
+    // 3. HTML TEMPLATE
+    // ──────────────────────────────────────────────────────────
 
     function getGridTemplate() {
         return `
@@ -189,11 +214,13 @@
 
     function escapeHtml(str) {
         if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        return String(str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     // ──────────────────────────────────────────────────────────
-    // 3. DATA FETCHING
+    // 4. DATA FETCHING
     // ──────────────────────────────────────────────────────────
 
     const GENRE_MAP = {
@@ -204,227 +231,255 @@
         'Sci-Fi': 878, 'Thriller': 53, 'War': 10752, 'Western': 37
     };
 
-    // Sentinel value to detect 'API key not configured' response
+    // Sentinel: tells the renderer to show a "please configure" message
     const NEEDS_SETUP = { _needsSetup: true };
 
     async function fetchUpcoming() {
-        const res = await fetch('/UpcomingMovies/tmdb/upcoming', { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
-        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
-        if (!res.ok) throw new Error(`TMDB upstream error: ${res.status}`);
+        const res = await fetch('/UpcomingMovies/tmdb/upcoming', {
+            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+        });
+        if (res.status === 400 || res.status === 500) {
+            ERR('fetchUpcoming returned', res.status, '— API key may not be configured');
+            return NEEDS_SETUP;
+        }
+        if (!res.ok) throw new Error('TMDB upstream error: ' + res.status);
         return res.json();
     }
 
     async function fetchRecommendations() {
         let genreIds = '';
         try {
-            const userId = window.ApiClient?.getCurrentUserId();
+            const userId = window.ApiClient && window.ApiClient.getCurrentUserId();
             if (userId) {
-                const histRes = await fetch(`${window.ApiClient._serverAddress}/Users/${userId}/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=30&Recursive=true`, { headers: { 'X-Emby-Token': window.ApiClient.accessToken() } });
+                const histRes = await fetch(
+                    window.ApiClient._serverAddress + '/Users/' + userId +
+                    '/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=30&Recursive=true',
+                    { headers: { 'X-Emby-Token': window.ApiClient.accessToken() } }
+                );
                 if (histRes.ok) {
                     const histData = await histRes.json();
                     const genreSet = new Set();
-                    (histData.Items || []).forEach(item => (item.GenreItems || []).forEach(g => { if (GENRE_MAP[g.Name]) genreSet.add(GENRE_MAP[g.Name]); }));
-                    genreIds = [...genreSet].slice(0, 3).join(',');
+                    (histData.Items || []).forEach(function(item) {
+                        (item.GenreItems || []).forEach(function(g) {
+                            if (GENRE_MAP[g.Name]) genreSet.add(GENRE_MAP[g.Name]);
+                        });
+                    });
+                    genreIds = Array.from(genreSet).slice(0, 3).join(',');
                 }
             }
         } catch (err) { WARN('Genre lookup failed:', err); }
 
-        const url = '/UpcomingMovies/tmdb/recommendations' + (genreIds ? `?genreIds=${genreIds}` : '');
-        const res = await fetch(url, { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
-        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
-        if (!res.ok) throw new Error(`TMDB upstream error: ${res.status}`);
+        const url = '/UpcomingMovies/tmdb/recommendations' + (genreIds ? '?genreIds=' + genreIds : '');
+        const res = await fetch(url, {
+            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+        });
+        if (res.status === 400 || res.status === 500) {
+            ERR('fetchRecommendations returned', res.status, '— API key may not be configured');
+            return NEEDS_SETUP;
+        }
+        if (!res.ok) throw new Error('TMDB upstream error: ' + res.status);
         return res.json();
     }
 
     async function fetchWatchlist() {
-        const userId = window.ApiClient?.getCurrentUserId();
+        const userId = window.ApiClient && window.ApiClient.getCurrentUserId();
         if (!userId) throw new Error('Not logged in');
-        const res = await fetch(`${window.ApiClient._serverAddress}/Users/${userId}/Items?IncludeItemTypes=Movie&Filters=IsLiked&SortBy=SortName&Recursive=true`, { headers: { 'X-Emby-Token': window.ApiClient.accessToken() } });
-        if (!res.ok) throw new Error('Failed to fetch watchlist');
+        // IsFavorite=true matches the KefinTweaks Watchlist (Jellyfin native favourites/heart system)
+        const server = window.ApiClient._serverAddress;
+        const res = await fetch(
+            server + '/Users/' + userId +
+            '/Items?IncludeItemTypes=Movie&IsFavorite=true&SortBy=DateCreated&SortOrder=Descending&Recursive=true',
+            { headers: { 'X-Emby-Token': window.ApiClient.accessToken() } }
+        );
+        if (!res.ok) throw new Error('Failed to fetch watchlist: ' + res.status);
         return res.json();
     }
 
     // ──────────────────────────────────────────────────────────
-    // 4. RENDERING ROUTINES
+    // 5. RENDERING
     // ──────────────────────────────────────────────────────────
 
-    function renderCards(movies, containerEl, streamBaseUrl) {
+    // Play icon SVG — identical to native Jellyfin
+    const PLAY_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>';
+
+    const SETUP_HTML = `<div class="discover-error">
+        &#9888;&#65039; <strong>TMDB API key not configured.</strong><br>
+        Go to <strong>Dashboard &rarr; Plugins &rarr; Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>
+        <a href="#/configurationpage?name=Upcoming Movies %26 Recommendations" style="color:#90caf9">Open Plugin Settings &rarr;</a>
+    </div>`;
+
+    function buildCard(tmdbId, title, posterUrl, date, streamBaseUrl, jellyfinId) {
+        const card = document.createElement('div');
+        card.className = 'discover-card';
+
+        // Action buttons differ by card type
+        let actionsHtml = '';
+        if (jellyfinId) {
+            // Watchlist card: View in Jellyfin + optional Stream
+            actionsHtml = '<button class="btn-jellyfin" data-jellyfin="' + jellyfinId + '">\u25b6 Open</button>';
+            if (tmdbId) {
+                actionsHtml += '<button class="btn-stream" data-tmdb="' + tmdbId + '" data-stream-base="' + escapeHtml(streamBaseUrl) + '">Stream</button>';
+            }
+        } else if (tmdbId) {
+            // TMDB card: Request + Stream
+            actionsHtml = '<button class="btn-request" data-tmdb="' + tmdbId + '" data-title="' + escapeHtml(title) + '">Request</button>'
+                + '<button class="btn-stream" data-tmdb="' + tmdbId + '" data-stream-base="' + escapeHtml(streamBaseUrl) + '">Stream</button>';
+        }
+
+        const posterHtml = posterUrl
+            ? '<img src="' + escapeHtml(posterUrl) + '" alt="' + escapeHtml(title) + '" loading="lazy" />'
+            : '<div class="dc-no-poster">\uD83C\uDFAC</div>';
+
+        card.innerHTML =
+            '<div class="dc-poster">'
+            + posterHtml
+            + '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>'
+            + (actionsHtml ? '<div class="dc-actions">' + actionsHtml + '</div>' : '')
+            + '</div>'
+            + '<div class="dc-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
+            + (date ? '<div class="dc-date">' + date + '</div>' : '');
+
+        // Whole-card click → Jellyfin detail page
+        card.addEventListener('click', function(e) {
+            if (e.target.closest('button')) return;
+            if (jellyfinId) {
+                window.location.hash = '#/details?id=' + jellyfinId;
+            }
+        });
+
+        // View in Jellyfin button
+        var btnJ = card.querySelector('.btn-jellyfin');
+        if (btnJ) btnJ.addEventListener('click', function(e) {
+            e.stopPropagation();
+            window.location.hash = '#/details?id=' + e.currentTarget.dataset.jellyfin;
+        });
+
+        // Request on Jellyseerr button
+        var btnR = card.querySelector('.btn-request');
+        if (btnR) btnR.addEventListener('click', function(e) {
+            e.stopPropagation();
+            handleRequest(e.currentTarget.dataset.tmdb, e.currentTarget.dataset.title, e.currentTarget);
+        });
+
+        // Stream Directly button
+        var btnS = card.querySelector('.btn-stream');
+        if (btnS) btnS.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var base = (e.currentTarget.dataset.streamBase || streamBaseUrl).replace(/\/$/, '');
+            window.open(base + '/' + e.currentTarget.dataset.tmdb, '_blank', 'noopener');
+        });
+
+        return card;
+    }
+
+    function renderTmdbCards(movies, containerEl, streamBaseUrl) {
         containerEl.innerHTML = '';
         if (!movies || movies.length === 0) {
             containerEl.innerHTML = '<div class="discover-error">No items found.</div>';
             return;
         }
-        movies.forEach(movie => {
-            const card = buildCard(movie.id, movie.title, movie.poster_path ? `${TMDB_IMAGE_BASE}${movie.poster_path}` : null, movie.release_date, streamBaseUrl);
-            containerEl.appendChild(card);
+        movies.forEach(function(movie) {
+            var posterUrl = movie.poster_path ? TMDB_IMAGE_BASE + movie.poster_path : null;
+            containerEl.appendChild(buildCard(movie.id, movie.title, posterUrl, movie.release_date, streamBaseUrl, null));
         });
     }
 
     function renderJellyfinCards(items, containerEl, streamBaseUrl) {
         containerEl.innerHTML = '';
         if (!items || items.length === 0) {
-            containerEl.innerHTML = '<div class="discover-loading">Your watchlist is empty. Like a movie in Jellyfin to add it here.</div>';
+            containerEl.innerHTML = '<div class="discover-loading">Your watchlist is empty. Mark a movie as favourite in Jellyfin to add it here.</div>';
             return;
         }
-
-        const token = window.ApiClient?.accessToken();
-        const server = window.ApiClient?._serverAddress;
-
-        items.forEach(item => {
-            const posterUrl = (item.ImageTags?.Primary && server)
-                ? `${server}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&quality=70&maxWidth=342&api_key=${token}`
-                : null;
-            // Pass item.Id as jellyfinId so the card links to the native Jellyfin detail page
-            const card = buildCard(
-                item.ProviderIds?.Tmdb || null,
-                item.Name,
-                posterUrl,
-                item.PremiereDate?.substring(0, 10),
-                streamBaseUrl,
-                item.Id           // ← Jellyfin native item ID for detail navigation
-            );
-            containerEl.appendChild(card);
+        var token  = window.ApiClient && window.ApiClient.accessToken();
+        var server = window.ApiClient && window.ApiClient._serverAddress;
+        items.forEach(function(item) {
+            var posterUrl = null;
+            if (item.ImageTags && item.ImageTags.Primary && server) {
+                posterUrl = server + '/Items/' + item.Id + '/Images/Primary?tag=' + item.ImageTags.Primary + '&quality=70&maxWidth=342&api_key=' + token;
+            }
+            var tmdbId = item.ProviderIds && item.ProviderIds.Tmdb ? item.ProviderIds.Tmdb : null;
+            var date   = item.PremiereDate ? item.PremiereDate.substring(0, 10) : null;
+            containerEl.appendChild(buildCard(tmdbId, item.Name, posterUrl, date, streamBaseUrl, item.Id));
         });
-    }
-
-    function buildCard(tmdbId, title, posterUrl, date, streamBaseUrl, jellyfinId) {
-        const card = document.createElement('div');
-        card.className = 'discover-card';
-        // Jellyfin-native items: entire card is clickable to the detail page
-        if (jellyfinId) {
-            card.style.cursor = 'pointer';
-            card.setAttribute('data-jellyfin-id', jellyfinId);
-        }
-
-        card.innerHTML = `
-            ${posterUrl ? `<img src="${posterUrl}" alt="${escapeHtml(title)}" loading="lazy" />` : `<div class="no-poster">🎬</div>`}
-            <div class="discover-card-overlay">
-                ${jellyfinId
-                    // Watchlist card: View in Jellyfin (primary) + Stream Directly (secondary)
-                    ? `<button class="btn-jellyfin" data-jellyfin="${jellyfinId}">▶ View in Jellyfin</button>
-                       ${tmdbId ? `<button class="btn-stream" data-tmdb="${tmdbId}" data-stream-base="${escapeHtml(streamBaseUrl)}">Stream Directly</button>` : ''}`
-                    // TMDB card: Request on Jellyseerr + Stream Directly
-                    : tmdbId
-                        ? `<button class="btn-request" data-tmdb="${tmdbId}" data-title="${escapeHtml(title)}">Request on Jellyseerr</button>
-                           <button class="btn-stream"  data-tmdb="${tmdbId}" data-stream-base="${escapeHtml(streamBaseUrl)}">▶ Stream Directly</button>`
-                        : `<span style="color:#aaa;font-size:0.8em">No TMDB ID</span>`
-                }
-            </div>
-            <div class="discover-card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
-            ${date ? `<div class="discover-card-date">${date}</div>` : ''}
-        `;
-
-        // Jellyfin detail page navigation — click anywhere on the card
-        if (jellyfinId) {
-            card.addEventListener('click', e => {
-                // Only navigate if no button was clicked (buttons handle their own events)
-                if (!e.target.closest('button')) {
-                    window.location.hash = `#/details?id=${jellyfinId}`;
-                }
-            });
-        }
-
-        // 'View in Jellyfin' button — direct to item detail page
-        const btnJellyfin = card.querySelector('.btn-jellyfin');
-        if (btnJellyfin) btnJellyfin.addEventListener('click', e => {
-            e.stopPropagation();
-            window.location.hash = `#/details?id=${btnJellyfin.dataset.jellyfin}`;
-        });
-
-        const btnReq = card.querySelector('.btn-request');
-        if (btnReq) btnReq.addEventListener('click', e => { e.stopPropagation(); handleRequest(btnReq.dataset.tmdb, btnReq.dataset.title, btnReq); });
-
-        const btnStream = card.querySelector('.btn-stream');
-        if (btnStream) btnStream.addEventListener('click', e => {
-            e.stopPropagation();
-            const base = (btnStream.dataset.streamBase || streamBaseUrl).replace(/\/$/, '');
-            window.open(`${base}/${btnStream.dataset.tmdb}`, '_blank', 'noopener');
-        });
-
-        return card;
     }
 
     async function handleRequest(tmdbId, title, btn) {
-        const original = btn.textContent;
-        btn.textContent = 'Requesting…';
+        var original = btn.textContent;
+        btn.textContent = 'Requesting\u2026';
         btn.disabled = true;
         try {
-            const res = await fetch('/UpcomingMovies/jellyseerr/request', {
+            var res = await fetch('/UpcomingMovies/jellyseerr/request', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Emby-Authorization': getJellyfinAuthHeader() },
                 body: JSON.stringify({ tmdbId: parseInt(tmdbId, 10), mediaType: 'movie' })
             });
-
             if (res.ok) {
-                btn.textContent = '✓ Requested';
-                btn.style.background = '#2e7d32';
+                btn.textContent = '\u2713 Requested';
+                btn.style.borderColor = '#2e7d32';
+                btn.style.color = '#4caf50';
             } else {
                 throw new Error('Failed');
             }
         } catch (err) {
             btn.textContent = 'Error';
-            btn.style.background = '#c62828';
-            setTimeout(() => { btn.textContent = original; btn.style.background = ''; btn.disabled = false; }, 3000);
+            btn.style.borderColor = '#c62828';
+            setTimeout(function() { btn.textContent = original; btn.style.borderColor = ''; btn.style.color = ''; btn.disabled = false; }, 3000);
         }
     }
 
     // ──────────────────────────────────────────────────────────
-    // 5. BOOT AND BIND TO DOM
+    // 6. BOOT — Populate a container div
     // ──────────────────────────────────────────────────────────
 
-    let _renderingContainers = new Set();
+    var _renderingContainers = new Set();
 
     async function populateDiscoverContainer(containerDiv) {
-        if (_renderingContainers.has(containerDiv)) return; // Already rendering
+        if (_renderingContainers.has(containerDiv)) return;
         _renderingContainers.add(containerDiv);
-        LOG('Populating matching Discover container...', containerDiv);
+        LOG('Populating Discover container…', containerDiv);
 
-        // Inject HTML if it's empty (Custom Tabs injects an empty div usually)
         if (!containerDiv.querySelector('.discover-page-content')) {
             containerDiv.innerHTML = getGridTemplate();
         }
 
-        const config = await fetchPluginConfig();
-        const streamBaseUrl = config.streamBaseUrl || '';
+        var config = await fetchPluginConfig();
+        var streamBaseUrl = config.streamBaseUrl || '';
 
-        // Determine visibility
-        containerDiv.querySelector('[data-section="upcoming"]')?.classList.toggle('discover-hidden', !config.showUpcoming);
-        containerDiv.querySelector('[data-section="recommended"]')?.classList.toggle('discover-hidden', !config.showRecommendations);
-        containerDiv.querySelector('[data-section="watchlist"]')?.classList.toggle('discover-hidden', !config.showWatchlist);
+        // Toggle section visibility from plugin config
+        var upcomingSection = containerDiv.querySelector('[data-section="upcoming"]');
+        var recommendedSection = containerDiv.querySelector('[data-section="recommended"]');
+        var watchlistSection = containerDiv.querySelector('[data-section="watchlist"]');
+        if (upcomingSection)   upcomingSection.classList.toggle('discover-hidden', !config.showUpcoming);
+        if (recommendedSection) recommendedSection.classList.toggle('discover-hidden', !config.showRecommendations);
+        if (watchlistSection)  watchlistSection.classList.toggle('discover-hidden', !config.showWatchlist);
 
-        const upcBox = containerDiv.querySelector('.upcoming-items');
-        const recBox = containerDiv.querySelector('.recommended-items');
-        const watBox = containerDiv.querySelector('.watchlist-items');
+        var upcBox = containerDiv.querySelector('.upcoming-items');
+        var recBox = containerDiv.querySelector('.recommended-items');
+        var watBox = containerDiv.querySelector('.watchlist-items');
 
-        const SETUP_MSG = `<div class="discover-error" style="font-size:1em;line-height:1.6">
-            ⚠️ <strong>TMDB API key not configured.</strong><br>
-            Go to <strong>Dashboard → Plugins → Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>
-            <a href="#/configurationpage?name=Upcoming Movies %26 Recommendations" style="color:#90caf9">Open Plugin Settings →</a>
-        </div>`;
+        function isSetup(v) { return v && v._needsSetup; }
 
-        // Helper to detect setup sentinel or null
-        const isSetup = v => v && v._needsSetup;
-
-        // Fetch concurrently
-        const [upc, rec, wat] = await Promise.all([
-            config.showUpcoming ? fetchUpcoming().catch(e => { ERR('fetchUpcoming:', e); return null; }) : null,
-            config.showRecommendations ? fetchRecommendations().catch(e => { ERR('fetchRecommendations:', e); return null; }) : null,
-            config.showWatchlist ? fetchWatchlist().catch(e => { ERR('fetchWatchlist:', e); return null; }) : null,
+        // Fetch all sections in parallel
+        var results = await Promise.all([
+            config.showUpcoming      ? fetchUpcoming().catch(function(e)      { ERR('fetchUpcoming:', e);      return null; }) : null,
+            config.showRecommendations ? fetchRecommendations().catch(function(e) { ERR('fetchRecommendations:', e); return null; }) : null,
+            config.showWatchlist     ? fetchWatchlist().catch(function(e)     { ERR('fetchWatchlist:', e);     return null; }) : null,
         ]);
+        var upc = results[0], rec = results[1], wat = results[2];
 
         if (upcBox) {
-            if (isSetup(upc))      upcBox.innerHTML = SETUP_MSG;
-            else if (upc)          renderCards(upc.results, upcBox, streamBaseUrl);
-            else                   upcBox.innerHTML = '<div class="discover-error">Failed to load Upcoming Movies. Check browser console for details.</div>';
+            if (isSetup(upc))  upcBox.innerHTML = SETUP_HTML;
+            else if (upc)      renderTmdbCards(upc.results, upcBox, streamBaseUrl);
+            else               upcBox.innerHTML = '<div class="discover-error">Failed to load Upcoming Movies. Check browser console for details.</div>';
         }
         if (recBox) {
-            if (isSetup(rec))      recBox.innerHTML = SETUP_MSG;
-            else if (rec)          renderCards(rec.results, recBox, streamBaseUrl);
-            else                   recBox.innerHTML = '<div class="discover-error">Failed to load Recommendations. Check browser console for details.</div>';
+            if (isSetup(rec))  recBox.innerHTML = SETUP_HTML;
+            else if (rec)      renderTmdbCards(rec.results, recBox, streamBaseUrl);
+            else               recBox.innerHTML = '<div class="discover-error">Failed to load Recommendations. Check browser console for details.</div>';
         }
         if (watBox) {
-            if (wat)               renderJellyfinCards(wat.Items, watBox, streamBaseUrl);
-            else                   watBox.innerHTML = '<div class="discover-error">Failed to load Watchlist. Check browser console for details.</div>';
+            if (wat)           renderJellyfinCards(wat.Items, watBox, streamBaseUrl);
+            else               watBox.innerHTML = '<div class="discover-error">Failed to load Watchlist. Check browser console for details.</div>';
         }
 
         _renderingContainers.delete(containerDiv);
@@ -432,10 +487,9 @@
 
     // ── INTEGRATION HOOKS ──
 
-    // Hook A: Observe for Kefin Tweaks "Custom Tabs" `.upcoming-movies-plugin`
-    const observer = new MutationObserver(mutations => {
-        // The Custom Tabs plugin creates `.upcoming-movies-plugin` dynamically when navigating to Home
-        document.querySelectorAll('.upcoming-movies-plugin').forEach(el => {
+    // Hook A: MutationObserver for Custom Tabs `.upcoming-movies-plugin` div
+    var observer = new MutationObserver(function() {
+        document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
             if (!el.hasAttribute('data-discover-initialized')) {
                 el.setAttribute('data-discover-initialized', 'true');
                 populateDiscoverContainer(el);
@@ -444,11 +498,11 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Hook B: Jellyfin Native Navigation Events for "#DiscoverPage" (Custom Menu Links Sidebar)
-    ['pageshow', 'viewshow', 'viewbeforeshow'].forEach(evtName => {
-        document.addEventListener(evtName, function (e) {
+    // Hook B: Jellyfin native page events for #DiscoverPage (sidebar menu link)
+    ['pageshow', 'viewshow', 'viewbeforeshow'].forEach(function(evtName) {
+        document.addEventListener(evtName, function(e) {
             if (e.target && e.target.id === 'DiscoverPage') {
-                const innerContainer = e.target.querySelector('.content-primary');
+                var innerContainer = e.target.querySelector('.content-primary');
                 if (innerContainer && !innerContainer.hasAttribute('data-discover-initialized')) {
                     innerContainer.setAttribute('data-discover-initialized', 'true');
                     populateDiscoverContainer(innerContainer);
@@ -457,103 +511,46 @@
         });
     });
 
-    // Run once on load just in case the elements are already there
+    // Hook C: KefinTweaks Custom Tab — detect the 'Discover' tab in the header
+    // and add a custom menu link for the sidebar if the user configured Header mode
+    (function detectAndRegisterTab() {
+        function tryInject() {
+            var tabs = document.querySelectorAll('.headerTabs .headerTab, [data-tab]');
+            tabs.forEach(function(tab) {
+                var label = (tab.textContent || '').trim();
+                if (label === 'Discover') {
+                    var idx = tab.dataset.index || Array.from(tab.parentElement.children).indexOf(tab);
+                    LOG('Found Discover Custom Tab at index', idx, '. Auto-injecting link…');
+                    // KefinTweaks API to add a custom menu link with our Discover tab
+                    if (window.KefinTweaksUtils && window.KeminTweaksUtils.addCustomMenuLink) {
+                        window.KefinTweaksUtils.addCustomMenuLink({
+                            name: 'Discover',
+                            icon: 'explore',
+                            url: '#/home?tab=' + idx,
+                            openInNewTab: false
+                        });
+                    }
+                }
+            });
+        }
+
+        // Try immediately, then retry after a short delay to ensure KefinTweaks has loaded
+        setTimeout(tryInject, 2000);
+        setTimeout(tryInject, 5000);
+    })();
+
+    // ── INIT ──
     injectStyles();
-    setTimeout(() => {
-        document.querySelectorAll('.upcoming-movies-plugin, #DiscoverPage .content-primary').forEach(el => {
+
+    // Run once in case page is already loaded
+    setTimeout(function() {
+        document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
             if (!el.hasAttribute('data-discover-initialized')) {
                 el.setAttribute('data-discover-initialized', 'true');
                 populateDiscoverContainer(el);
             }
         });
-    }, 500);
+    }, 800);
 
-    // Hook C: Auto-Inject sidebar link for KefinTweaks-like Header Integration
-    async function injectHeaderLinkIfConfigured() {
-        if (!window.ApiClient || !window.ApiClient.accessToken) return;
-        try {
-            const token = window.ApiClient.accessToken();
-            const server = window.ApiClient._serverAddress;
-            if (!token || !server) return;
-
-            // 1. Check if user configured a Custom Tab for Discover
-            const res = await fetch(`${server}/CustomTabs/Config`, {
-                headers: { 'X-Emby-Token': token, 'Content-Type': 'application/json' }
-            });
-
-            if (!res.ok) return; // Custom Tabs plugin not installed or accessible
-            
-            const tabs = await res.json();
-            if (!Array.isArray(tabs)) return;
-
-            // 2. Find the index of the tab containing our target class
-            let discoverTabIndex = -1;
-            tabs.forEach((tab, index) => {
-                if (tab && tab.ContentHtml && tab.ContentHtml.includes('upcoming-movies-plugin')) {
-                    // Custom Tabs displays after 'Home' and 'Favorites' (which are index 0 and 1)
-                    discoverTabIndex = index + 2;
-                }
-            });
-
-            if (discoverTabIndex === -1) return; // Discover tab not configured in Custom Tabs
-            
-            const targetUrl = `#/home?tab=${discoverTabIndex}`;
-            const linkName = "Discover";
-            const iconName = "explore";
-
-            LOG(`Found Discover Custom Tab at index ${discoverTabIndex}. Auto-injecting link...`);
-
-            // 3. Inject the link
-            if (window.KefinTweaksUtils && typeof window.KefinTweaksUtils.addCustomMenuLink === 'function') {
-                // If KefinTweaks is active, use its native utility to ensure perfect compatibility
-                window.KefinTweaksUtils.addCustomMenuLink(linkName, iconName, targetUrl, false);
-            } else {
-                // Fallback: Manually inject if KefinTweaksUtils isn't loaded but Custom Tabs is
-                const containerSelector = '.customMenuOptions';
-                
-                const addLinkToContainer = (container) => {
-                    if (container.querySelector(`a[href="${targetUrl}"]`)) return; // Already exists
-                    
-                    const link = document.createElement('a');
-                    link.setAttribute('is', 'emby-linkbutton');
-                    link.className = 'emby-button navMenuOption lnkMediaFolder';
-                    link.href = targetUrl;
-                    
-                    link.innerHTML = `
-                        <span class="material-icons navMenuOptionIcon ${iconName}" aria-hidden="true"></span>
-                        <span class="navMenuOptionText">${linkName}</span>
-                    `;
-                    container.appendChild(link);
-                    LOG('Successfully injected standalone Custom Menu Link for Discover.');
-                };
-
-                const existingContainer = document.querySelector(containerSelector);
-                if (existingContainer) {
-                    addLinkToContainer(existingContainer);
-                } else {
-                    const observer = new MutationObserver((mutations, obs) => {
-                        const container = document.querySelector(containerSelector);
-                        if (container) {
-                            addLinkToContainer(container);
-                            obs.disconnect();
-                        }
-                    });
-                    observer.observe(document.body, { childList: true, subtree: true });
-                }
-            }
-
-        } catch (err) {
-            WARN('Failed to auto-inject header link:', err);
-        }
-    }
-
-    // Attempt injection after ApiClient is initialized
-    if (window.ApiClient && window.ApiClient.accessToken) {
-        injectHeaderLinkIfConfigured();
-    } else {
-        document.addEventListener('apiclientready', injectHeaderLinkIfConfigured, { once: true });
-        // Fallback timeout in case event doesn't fire
-        setTimeout(injectHeaderLinkIfConfigured, 3000);
-    }
-
+    LOG('discoverPage.js loaded and hooks registered.');
 })();
