@@ -412,7 +412,7 @@
         var topGenres = Object.keys(genreWeights)
             .sort(function(a, b) { return genreWeights[b] - genreWeights[a]; })
             .slice(0, 5)
-            .join(',');
+            .join('|');
 
         // Take top 8 TMDB IDs as movie seeds
         var seedIds = tmdbIds.slice(0, 8).join(',');

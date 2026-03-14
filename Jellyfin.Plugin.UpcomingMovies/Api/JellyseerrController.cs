@@ -105,22 +105,41 @@ public class JellyseerrController : ControllerBase
                     {
                         if (instance.TryGetValue("id", out var idObj) && idObj is JsonElement idEl && idEl.TryGetInt32(out var id))
                         {
-                            // Fetch profiles
-                            using var profReq = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/api/v1/settings/radarr/{id}/profiles");
-                            profReq.Headers.Add("X-Api-Key", config.JellyseerrApiKey);
-                            var profRes = await client.SendAsync(profReq).ConfigureAwait(false);
-                            if (profRes.IsSuccessStatusCode)
+                            // Fetch profiles and root folders via the /test endpoint
+                            using var testReq = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/api/v1/settings/radarr/test");
+                            testReq.Headers.Add("X-Api-Key", config.JellyseerrApiKey);
+                            testReq.Content = new StringContent(JsonSerializer.Serialize(instance), Encoding.UTF8, "application/json");
+                            var testRes = await client.SendAsync(testReq).ConfigureAwait(false);
+                            if (testRes.IsSuccessStatusCode)
                             {
-                                var profJson = await profRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                                var profiles = JsonSerializer.Deserialize<List<object>>(profJson);
-                                instance["profiles"] = profiles ?? new List<object>();
-                            }
+                                var testJson = await testRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                                var testResult = JsonSerializer.Deserialize<Dictionary<string, object>>(testJson);
 
-                            // For root folder, Jellyseerr doesn't expose an endpoint outside of test.
-                            // We use the activeDirectory as the populated option.
-                            if (instance.TryGetValue("activeDirectory", out var adObj) && adObj is JsonElement adEl && adEl.ValueKind == JsonValueKind.String)
-                            {
-                                instance["paths"] = new List<string> { adEl.GetString() ?? "" };
+                                if (testResult != null && testResult.TryGetValue("profiles", out var profilesObj))
+                                {
+                                    instance["profiles"] = profilesObj;
+                                }
+                                else
+                                {
+                                    instance["profiles"] = new List<object>();
+                                }
+
+                                if (testResult != null && testResult.TryGetValue("rootFolders", out var rootFoldersObj) && rootFoldersObj is JsonElement rfEl && rfEl.ValueKind == JsonValueKind.Array)
+                                {
+                                    var paths = new List<string>();
+                                    foreach (var rf in rfEl.EnumerateArray())
+                                    {
+                                        if (rf.TryGetProperty("path", out var pathProp) && pathProp.ValueKind == JsonValueKind.String)
+                                        {
+                                            paths.Add(pathProp.GetString() ?? "");
+                                        }
+                                    }
+                                    instance["paths"] = paths;
+                                }
+                                else
+                                {
+                                    instance["paths"] = new List<string>();
+                                }
                             }
                         }
                     }
