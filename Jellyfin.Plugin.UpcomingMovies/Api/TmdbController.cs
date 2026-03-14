@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -33,12 +36,12 @@ public class TmdbController : ControllerBase
 
     /// <summary>
     /// Proxies a request to TMDB's /movie/upcoming endpoint.
+    /// Returns only movies whose release_date is today or in the future.
     /// </summary>
     [HttpGet("upcoming")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> GetUpcoming([FromQuery] int page = 1)
     {
         try
@@ -61,7 +64,43 @@ public class TmdbController : ControllerBase
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            return Content(json, "application/json");
+
+            // Filter server-side: only include movies not yet released (release_date >= today)
+            // This supplements TMDB's own "upcoming" filter which may include recently released films.
+            try
+            {
+                var doc = JsonDocument.Parse(json);
+                var today = DateTime.UtcNow.Date;
+                var filtered = new List<JsonElement>();
+
+                if (doc.RootElement.TryGetProperty("results", out var results))
+                {
+                    foreach (var movie in results.EnumerateArray())
+                    {
+                        if (movie.TryGetProperty("release_date", out var rd)
+                            && DateTime.TryParse(rd.GetString(), out var releaseDate)
+                            && releaseDate.Date >= today)
+                        {
+                            filtered.Add(movie);
+                        }
+                    }
+                }
+
+                // Rebuild the response with the filtered list
+                var filteredJson = JsonSerializer.Serialize(new
+                {
+                    results = filtered,
+                    total_results = filtered.Count,
+                    page = page,
+                    _filtered = true
+                });
+                return Content(filteredJson, "application/json");
+            }
+            catch (Exception parseEx)
+            {
+                _logger.LogWarning(parseEx, "[UpcomingMovies] Could not filter upcoming results, returning raw");
+                return Content(json, "application/json");
+            }
         }
         catch (Exception ex)
         {
@@ -71,14 +110,18 @@ public class TmdbController : ControllerBase
     }
 
     /// <summary>
-    /// Proxies a request to TMDB's /discover/movie endpoint for personalized recommendations.
+    /// Intelligent recommendation engine.
+    /// Accepts TMDB IDs of the user's watched/favorited movies and genre preference weights.
+    /// Fetches per-movie recommendations + genre-based discover results, then merges and deduplicates.
     /// </summary>
     [HttpGet("recommendations")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetRecommendations([FromQuery] string genreIds = "", [FromQuery] int page = 1)
+    public async Task<IActionResult> GetRecommendations(
+        [FromQuery] string tmdbIds = "",
+        [FromQuery] string genreIds = "",
+        [FromQuery] int page = 1)
     {
         try
         {
@@ -90,18 +133,119 @@ public class TmdbController : ControllerBase
             }
 
             var client = _httpClientFactory.CreateClient();
-            var genreFilter = string.IsNullOrWhiteSpace(genreIds) ? string.Empty : $"&with_genres={genreIds}";
-            var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=200&page={page}{genreFilter}";
-            var response = await client.GetAsync(url).ConfigureAwait(false);
+            var allResults = new List<JsonElement>();
+            var seenIds = new HashSet<int>();
 
-            if (!response.IsSuccessStatusCode)
+            // Seed IDs to exclude from recommendations (already watched/favorited by user)
+            var excludeIds = new HashSet<int>();
+            if (!string.IsNullOrWhiteSpace(tmdbIds))
             {
-                _logger.LogWarning("[UpcomingMovies] TMDB /discover returned {StatusCode}", response.StatusCode);
-                return StatusCode((int)response.StatusCode, new { error = "TMDB API returned an error." });
+                foreach (var part in tmdbIds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (int.TryParse(part.Trim(), out var id)) excludeIds.Add(id);
+                }
             }
 
-            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            return Content(json, "application/json");
+            // 1. Per-movie recommendations from watched/favorited titles (up to 5 seed movies)
+            var seedIds = excludeIds.Take(5).ToList();
+            foreach (var seedId in seedIds)
+            {
+                try
+                {
+                    var recUrl = $"{TmdbBaseUrl}/movie/{seedId}/recommendations?api_key={apiKey}&language=en-US&page=1";
+                    var recRes = await client.GetAsync(recUrl).ConfigureAwait(false);
+                    if (recRes.IsSuccessStatusCode)
+                    {
+                        var recJson = await recRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        var recDoc = JsonDocument.Parse(recJson);
+                        if (recDoc.RootElement.TryGetProperty("results", out var recResults))
+                        {
+                            foreach (var movie in recResults.EnumerateArray())
+                            {
+                                if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
+                                {
+                                    if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
+                                    {
+                                        allResults.Add(movie);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception seedEx)
+                {
+                    _logger.LogWarning(seedEx, "[UpcomingMovies] Per-movie recommendations failed for TMDB ID {Id}", seedId);
+                }
+            }
+
+            // 2. Genre-based discover as supplementary source
+            var genreFilter = string.IsNullOrWhiteSpace(genreIds) ? string.Empty : $"&with_genres={genreIds}";
+            var discoverUrl = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=200&page={page}{genreFilter}";
+            var discoverRes = await client.GetAsync(discoverUrl).ConfigureAwait(false);
+
+            if (discoverRes.IsSuccessStatusCode)
+            {
+                var discoverJson = await discoverRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                var discoverDoc = JsonDocument.Parse(discoverJson);
+                if (discoverDoc.RootElement.TryGetProperty("results", out var discoverResults))
+                {
+                    foreach (var movie in discoverResults.EnumerateArray())
+                    {
+                        if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
+                        {
+                            if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
+                            {
+                                allResults.Add(movie);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Fallback to trending if no results
+            if (allResults.Count == 0)
+            {
+                var trendUrl = $"{TmdbBaseUrl}/trending/movie/week?api_key={apiKey}&language=en-US";
+                var trendRes = await client.GetAsync(trendUrl).ConfigureAwait(false);
+                if (trendRes.IsSuccessStatusCode)
+                {
+                    var trendJson = await trendRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    var trendDoc = JsonDocument.Parse(trendJson);
+                    if (trendDoc.RootElement.TryGetProperty("results", out var trendResults))
+                    {
+                        foreach (var movie in trendResults.EnumerateArray())
+                        {
+                            if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
+                            {
+                                if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
+                                {
+                                    allResults.Add(movie);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sort by vote_average desc and take top 30
+            var sorted = allResults
+                .OrderByDescending(m =>
+                {
+                    if (m.TryGetProperty("vote_average", out var va) && va.TryGetDouble(out var d)) return d;
+                    return 0.0;
+                })
+                .Take(30)
+                .ToList();
+
+            var finalJson = JsonSerializer.Serialize(new
+            {
+                results = sorted,
+                total_results = sorted.Count,
+                page = page
+            });
+
+            return Content(finalJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -127,8 +271,8 @@ public class TmdbController : ControllerBase
                 navPlacement = config?.NavPlacement.ToString() ?? "Sidebar",
                 showUpcoming = config?.ShowUpcomingSection ?? true,
                 showRecommendations = config?.ShowRecommendationsSection ?? true,
-                showWatchlist = config?.ShowWatchlistSection ?? true,
-                tmdbConfigured = !string.IsNullOrWhiteSpace(config?.TmdbApiKey)
+                tmdbConfigured = !string.IsNullOrWhiteSpace(config?.TmdbApiKey),
+                jellyseerrConfigured = !string.IsNullOrWhiteSpace(config?.JellyseerrApiKey) && !string.IsNullOrWhiteSpace(config?.JellyseerrUrl)
             });
         }
         catch (Exception ex)
