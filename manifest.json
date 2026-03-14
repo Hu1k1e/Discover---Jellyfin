@@ -9,12 +9,12 @@
     "imageUrl": "https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/icon.png",
     "versions": [
       {
-        "version": "1.0.3.0",
+        "version": "1.0.4.0",
         "changelog": "Initial release. Discover page with Upcoming, Recommended, and Watchlist sections. Header/sidebar nav placement configurable in plugin settings.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.3/jellyfin-plugin-upcoming-movies_v1.0.3.zip",
-        "checksum": "c19f7fb7748ed98bc19f032c459cd4a0",
-        "timestamp": "2026-03-14T17:26:58Z"
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.4/jellyfin-plugin-upcoming-movies_v1.0.4.zip",
+        "checksum": "e5818cc6705c2ef123f5f8ab5c84fd4d",
+        "timestamp": "2026-03-14T18:05:45Z"
       }
     ]
   }
