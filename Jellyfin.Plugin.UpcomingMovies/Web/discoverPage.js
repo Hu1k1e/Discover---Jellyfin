@@ -158,23 +158,15 @@
             /* ── Bottom action bar ── */
             .dc-actions {
                 position: absolute; bottom: 0; left: 0; right: 0;
-                padding: 5px 7px; display: flex; gap: 5px;
-                background: linear-gradient(transparent, rgba(0,0,0,0.92));
+                padding: 10px; display: flex; flex-direction: column; gap: 5px;
+                background: linear-gradient(transparent, rgba(0,0,0,0.95));
                 opacity: 0; transition: opacity 0.18s ease;
             }
             .discover-card:hover .dc-actions { opacity: 1; }
+            /* The buttons themselves will pick up rules from Jellyfin CSS.md, but we provide base fallbacks just in case */
             .dc-actions button {
-                flex: 1; padding: 5px 4px; border-radius: 3px; cursor: pointer;
-                font-size: 0.70em; font-weight: 700; letter-spacing: 0.02em;
-                white-space: nowrap; transition: background 0.12s;
-                background: rgba(0,0,0,0.45); color: #fff;
+                width: 100%; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; padding: 8px; font-size: 14px;
             }
-            /* Request = Jellyseerr purple */
-            .btn-request { border: 1px solid #7B5EA7 !important; color: #b39ddb !important; }
-            .btn-request:hover { background: rgba(123,94,167,0.32) !important; }
-            /* Stream = H-TV green */
-            .btn-stream  { border: 1px solid #00C853 !important; color: #69f0ae !important; }
-            .btn-stream:hover  { background: rgba(0,200,83,0.22) !important; }
 
             /* ── Card meta ── */
             .dc-title {
@@ -608,17 +600,16 @@
         var date         = opts.date;
         var streamBaseUrl = opts.streamBaseUrl || '';
         var isUpcoming   = !!opts.isUpcoming;
-        var jellyfinId   = opts.jellyfinId;
+        var isAvailable  = !!opts.isAvailable;
 
         var card = document.createElement('div');
         card.className = 'discover-card' + (isUpcoming ? ' upcoming-card' : '');
 
         var actionsHtml = '';
-        if (tmdbId) {
-            actionsHtml += '<button class="btn-request" data-tmdb="' + tmdbId + '">Request</button>';
-        }
-        if (!isUpcoming && tmdbId && streamBaseUrl) {
-            actionsHtml += '<button class="btn-stream" data-tmdb="' + tmdbId + '">Stream</button>';
+        if (!isUpcoming && isAvailable && jellyfinId) {
+            actionsHtml += '<button class="btnPlay detailButton btn-play" data-jellyfin="' + jellyfinId + '" style="background:#00C853; color:#fff; display:flex; justify-content:center; align-items:center; gap:6px;">' + PLAY_SVG + 'Play</button>';
+        } else if (tmdbId) {
+            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
         }
 
         var posterHtml = posterUrl
@@ -649,12 +640,11 @@
             openRequestModal(e.currentTarget.dataset.tmdb, title, backdropUrl);
         });
 
-        // Stream button
-        var btnStr = card.querySelector('.btn-stream');
-        if (btnStr) btnStr.addEventListener('click', function(e) {
+        // Play button
+        var btnPlay = card.querySelector('.btn-play');
+        if (btnPlay) btnPlay.addEventListener('click', function(e) {
             e.stopPropagation();
-            var base = streamBaseUrl.replace(/\/$/, '');
-            window.open(base + '/' + e.currentTarget.dataset.tmdb, '_blank', 'noopener');
+            window.location.hash = '#/details?id=' + e.currentTarget.dataset.jellyfin;
         });
 
         return card;
@@ -680,7 +670,9 @@
                 backdropUrl:  backdropUrl,
                 date:         movie.release_date || null,
                 streamBaseUrl: streamBaseUrl,
-                isUpcoming:   !!isUpcoming
+                isUpcoming:   !!isUpcoming,
+                isAvailable:  movie.isAvailable,
+                jellyfinId:   movie.jellyfinId
             }));
         });
     }
@@ -723,6 +715,36 @@
             config.showRecommendations ? fetchRecommendations().catch(function(e) { ERR('fetchRecommendations:', e); return null; }) : null
         ]);
         var upc = results[0], rec = results[1];
+
+        // Fetch Jellyfin library map so we know which items are available
+        var client = window.ApiClient;
+        var userId = client && client.getCurrentUserId();
+        if (userId && config.showRecommendations && rec && rec.results) {
+            try {
+                var server = client._serverAddress;
+                var token  = client.accessToken();
+                var allRes = await fetch(
+                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Recursive=true&Fields=ProviderIds',
+                    { headers: { 'X-Emby-Token': token } }
+                );
+                if (allRes.ok) {
+                    var allData = await allRes.json();
+                    var tmdbMap = {};
+                    (allData.Items || []).forEach(function(item) {
+                        var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
+                        if (tid) tmdbMap[tid] = item.Id;
+                    });
+                    rec.results.forEach(function(movie) {
+                        if (tmdbMap[movie.id]) {
+                            movie.isAvailable = true;
+                            movie.jellyfinId = tmdbMap[movie.id];
+                        }
+                    });
+                }
+            } catch (err) {
+                WARN('Failed to check Jellyfin library availability:', err);
+            }
+        }
 
         if (rowUpcoming) {
             if (isSetup(upc)) { rowUpcoming.innerHTML = SETUP_HTML; }
