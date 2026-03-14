@@ -1,5 +1,9 @@
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Plugin.UpcomingMovies.Helpers;
 using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
