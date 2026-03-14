@@ -102,5 +102,44 @@ The application MUST adhere strictly to the native Jellyfin design system.
 ## Phase 5: Build and Release v1.0.5 (2026-03-14) ✅
 - Tagged `v1.0.5` to trigger the automated GitHub Action workflow, bundling the KefinTweaks style auto-injection updates.
 
+## Phase 6: Root Cause Fix — Native Script Injection via File Transformation Plugin (2026-03-14) ✅
+
+### Root Cause Identified
+The "blank Discover tab" was caused by a **script loading failure**: `discoverPage.js` was NEVER loaded
+by the browser. The Custom Tabs plugin correctly injected the placeholder `<div class="sections upcoming-movies-plugin">` 
+into the Home page DOM, but no JavaScript was present to populate it. The user had NOT configured the 
+JS Injector plugin to load our script.
+
+### Investigation Journey
+1. **Browser-tested the live server** at `192.168.2.54:1000` — confirmed blank tab, no `discoverPage.js` in Network tab.
+2. **Analyzed KefinTweaks' architecture** — it DOES require JS Injector for its first bootstrap script. It is not truly zero-configuration.
+3. **Analyzed Custom Tabs Plugin source code** at `/CustomTabsPlugin/src/Jellyfin.Plugin.CustomTabs/`:
+   - `TransformationPatches.cs`: Has a static method `IndexHtml(PatchRequestPayload)` that reads an embedded JS file and splices it before `</body>`.
+   - `StartupService.cs`: Implements `IScheduledTask` (runs on server start). Uses **reflection + `AssemblyLoadContext`** to find the `Jellyfin.Plugin.FileTransformation.PluginInterface` at runtime and calls `RegisterTransformation()` with a JSON payload specifying the file pattern (`index.html`) and callback method.
+   - This technique requires the user to have the [File Transformation Plugin](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) installed (which the user already has, as it's a KefinTweaks prerequisite).
+
+### Solution Implemented (v1.0.6)
+Replicated the exact Custom Tabs injection pattern:
+- **`Services/StartupService.cs`**: `IScheduledTask` that registers our `index.html` transformation on server startup.
+- **`Helpers/TransformationPatches.cs`**: Static callback that reads embedded `inject.js` and splices it before `</body>`.
+- **`Model/PatchRequestPayload.cs`**: Local mirror of the File Transformation Plugin's payload type for the method signature.
+- **`Web/inject.js`**: Tiny bootstrap (inlined in `index.html`) that dynamically loads `discoverPage.js` from the plugin's own endpoint `/web/ConfigurationPage?name=discoverPage.js`.
+- **`csproj` updated**: Added `Newtonsoft.Json` dependency (for JObject payload), embedded `inject.js`, bumped version to 1.0.6.
+
+### Architecture Flow (Post v1.0.6)
+```
+Jellyfin starts → StartupService.cs runs → Registers index.html transformation
+User opens Jellyfin → File Transformation Plugin intercepts index.html
+                    → TransformationPatches.InjectScriptTag() inlines inject.js
+User's browser receives index.html with inject.js → loads discoverPage.js automatically
+discoverPage.js runs → watches for .upcoming-movies-plugin in Custom Tabs DOM → populates it
+```
+
+### Prerequisites for Zero-Config Operation
+1. [File Transformation Plugin](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) installed ✅ (already installed — KefinTweaks dependency)
+2. [Custom Tabs Plugin](https://github.com/IAmParadox27/jellyfin-plugin-custom-tabs) installed with a tab containing `<div class="sections upcoming-movies-plugin"></div>` ✅ (already configured)
+3. Plugin TMDB API key configured in Dashboard → Plugins → Upcoming Movies & Recommendations ✅
+
 ## Pending/Next Steps
-None. The plugin has achieved robust native integration for both the Sidebar and the Home Tab (Header) while automatically bootstrapping itself for a seamless end-user experience equivalent to KefinTweaks.
+- After the user installs v1.0.6 from the updated manifest, the Discover tab should populate automatically.
+- No JS Injector configuration is needed.
