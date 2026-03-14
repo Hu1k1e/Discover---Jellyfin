@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Jellyfin.Plugin.UpcomingMovies.Model;

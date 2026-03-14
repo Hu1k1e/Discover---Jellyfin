@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading;
@@ -73,9 +75,10 @@ public class StartupService : IScheduledTask
 
     public IEnumerable<TaskTriggerInfo> GetDefaultTriggers()
     {
-        yield return new TaskTriggerInfo
+        // Run once at server startup
+        return new[]
         {
-            Type = TaskTriggerInfo.TriggerStartup
+            new TaskTriggerInfo { Type = TaskTriggerInfoType.StartupTrigger }
         };
     }
 }
