@@ -12,9 +12,9 @@
         "version": "1.0.0.0",
         "changelog": "Initial release. Discover page with Upcoming, Recommended, and Watchlist sections. Header/sidebar nav placement configurable in plugin settings.",
         "targetAbi": "10.11.0.0",
-        "sourceUrl": "https://github.com/Hu1k1e/jellyfin-plugin-upcoming-movies/releases/download/v1.0.0/jellyfin-plugin-upcoming-movies_v1.0.0.zip",
-        "checksum": "REPLACE_WITH_SHA256_CHECKSUM_OF_ZIP",
-        "timestamp": "2026-03-14T00:00:00Z"
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.0/jellyfin-plugin-upcoming-movies_v1.0.0.zip",
+        "checksum": "ac53c7c0cf05742df992054e4aeca3a5416d096c020b5c5582a7b8bcf0bf1cfd",
+        "timestamp": "2026-03-14T17:10:03Z"
       }
     ]
   }
