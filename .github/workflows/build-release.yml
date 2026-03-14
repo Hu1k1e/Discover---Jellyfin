@@ -51,6 +51,12 @@ jobs:
 
       - name: Update manifest.json with new version data
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout main
+          git pull origin main --rebase
+          
           VERSION=${{ steps.version.outputs.VERSION }}
           CHECKSUM=${{ steps.checksum.outputs.CHECKSUM }}
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -74,16 +80,6 @@ jobs:
 
       - name: Commit updated manifest
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Stash the modified manifest before checking out main
-          git stash
-          # Pull latest main to avoid race condition when local pushes overlap
-          git fetch origin main
-          git checkout main
-          git pull origin main
-          # Restore manifest modifications
-          git stash pop || true
           git add manifest.json
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update manifest for v${{ steps.version.outputs.VERSION }}"
