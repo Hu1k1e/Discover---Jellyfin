@@ -35,10 +35,25 @@ The easiest way: add this repo URL to Jellyfin and install from the catalog.
 3. Click it → **Install**
 4. **Restart Jellyfin** when prompted
 
-### Step 3 — Configure the plugin
+### Step 2 — Configure the Plugin
 
-1. After restart, go to **Dashboard → Plugins → Upcoming Movies & Recommendations → Settings**
-2. Fill in:
+1. Go to **Dashboard → Plugins → Upcoming Movies & Recommendations → Settings**
+2. Fill out all the necessary API configuration (TMDB, Jellyseerr, Stream Base URL).
+3. Choose your preferred **Nav Placement** (Sidebar or Header).
+4. Click **Save**.
+
+### Step 3 — Inject Frontend Script (CRITICAL)
+
+Because this is a native C# plugin without invasive core-file patching, you must expose the frontend Javascript to the Jellyfin client manually. This is the official and safest way to load custom UI logic.
+
+1. Go to **Dashboard → General** in Jellyfin.
+2. Scroll to the bottom to find the **Custom HTML code** input box.
+3. Paste the following script tag exactly as written:
+   ```html
+   <script src="/web/ConfigurationPage?name=discoverPage.js"></script>
+   ```
+4. Click **Save**.
+5. Refresh your Jellyfin browser tab. The plugin's UI will now appear in your selected location!
 
 | Setting | Description |
 |---|---|

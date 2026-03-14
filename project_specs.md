@@ -62,7 +62,7 @@ The application MUST adhere strictly to the native Jellyfin design system.
 # 6. Current Phase & Next Action
 
 **Phase 3 Complete: Frontend Custom Tabs Injection & GitHub Configuration**
-- **Next Action:** Push the code to GitHub from your machine (requires your GitHub authentication), tag v1.0.0, and add the manifest to Jellyfin.
+- **Next Action:** Instruct the user on the Jellyfin architecture quirk (JS injection requires the Custom HTML snippet in the Jellyfin Dashboard) so the frontend renders.
 
 ---
 
@@ -89,6 +89,6 @@ The application MUST adhere strictly to the native Jellyfin design system.
 - Created `.github/workflows/build-release.yml` for automated ZIP builds and JSON manifest updates.
 
 ## Pending
-- Phase 4: Push code to GitHub, tag v1.0.0.
-- Phase 5: Add manifest URL to Jellyfin repositories, install, configure.
-- Phase 6: End-to-end user validation.
+- Phase 4: Push code to GitHub, tag release. **(Done)**
+- Phase 5: Add manifest URL to Jellyfin repositories, install, configure. **(Done)**
+- Phase 6: Inject the UI JS via Dashboard -> General -> Custom HTML code, and perform end-to-end user validation.
