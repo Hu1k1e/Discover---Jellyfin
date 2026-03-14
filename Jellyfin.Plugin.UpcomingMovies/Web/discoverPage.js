@@ -137,6 +137,8 @@
             
             .btn-request { background-color: var(--theme-primary-color, #00a4dc); }
             .btn-request:hover { opacity: 0.8; }
+            .btn-jellyfin { background-color: #2e7d32; }
+            .btn-jellyfin:hover { background-color: #1b5e20; }
             .btn-stream { background-color: #d32f2f; }
             .btn-stream:hover { background-color: #b71c1c; }
             
@@ -272,27 +274,62 @@
             const posterUrl = (item.ImageTags?.Primary && server)
                 ? `${server}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&quality=70&maxWidth=342&api_key=${token}`
                 : null;
-            const card = buildCard(item.ProviderIds?.Tmdb || null, item.Name, posterUrl, item.PremiereDate?.substring(0, 10), streamBaseUrl);
+            // Pass item.Id as jellyfinId so the card links to the native Jellyfin detail page
+            const card = buildCard(
+                item.ProviderIds?.Tmdb || null,
+                item.Name,
+                posterUrl,
+                item.PremiereDate?.substring(0, 10),
+                streamBaseUrl,
+                item.Id           // ← Jellyfin native item ID for detail navigation
+            );
             containerEl.appendChild(card);
         });
     }
 
-    function buildCard(tmdbId, title, posterUrl, date, streamBaseUrl) {
+    function buildCard(tmdbId, title, posterUrl, date, streamBaseUrl, jellyfinId) {
         const card = document.createElement('div');
         card.className = 'discover-card';
+        // Jellyfin-native items: entire card is clickable to the detail page
+        if (jellyfinId) {
+            card.style.cursor = 'pointer';
+            card.setAttribute('data-jellyfin-id', jellyfinId);
+        }
 
         card.innerHTML = `
             ${posterUrl ? `<img src="${posterUrl}" alt="${escapeHtml(title)}" loading="lazy" />` : `<div class="no-poster">🎬</div>`}
             <div class="discover-card-overlay">
-                ${tmdbId
-                    ? `<button class="btn-request" data-tmdb="${tmdbId}" data-title="${escapeHtml(title)}">Request on Jellyseerr</button>
-                       <button class="btn-stream"  data-tmdb="${tmdbId}" data-stream-base="${escapeHtml(streamBaseUrl)}">▶ Stream Directly</button>`
-                    : `<span style="color:#aaa;font-size:0.8em">No TMDB ID</span>`
+                ${jellyfinId
+                    // Watchlist card: View in Jellyfin (primary) + Stream Directly (secondary)
+                    ? `<button class="btn-jellyfin" data-jellyfin="${jellyfinId}">▶ View in Jellyfin</button>
+                       ${tmdbId ? `<button class="btn-stream" data-tmdb="${tmdbId}" data-stream-base="${escapeHtml(streamBaseUrl)}">Stream Directly</button>` : ''}`
+                    // TMDB card: Request on Jellyseerr + Stream Directly
+                    : tmdbId
+                        ? `<button class="btn-request" data-tmdb="${tmdbId}" data-title="${escapeHtml(title)}">Request on Jellyseerr</button>
+                           <button class="btn-stream"  data-tmdb="${tmdbId}" data-stream-base="${escapeHtml(streamBaseUrl)}">▶ Stream Directly</button>`
+                        : `<span style="color:#aaa;font-size:0.8em">No TMDB ID</span>`
                 }
             </div>
             <div class="discover-card-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
             ${date ? `<div class="discover-card-date">${date}</div>` : ''}
         `;
+
+        // Jellyfin detail page navigation — click anywhere on the card
+        if (jellyfinId) {
+            card.addEventListener('click', e => {
+                // Only navigate if no button was clicked (buttons handle their own events)
+                if (!e.target.closest('button')) {
+                    window.location.hash = `#/details?id=${jellyfinId}`;
+                }
+            });
+        }
+
+        // 'View in Jellyfin' button — direct to item detail page
+        const btnJellyfin = card.querySelector('.btn-jellyfin');
+        if (btnJellyfin) btnJellyfin.addEventListener('click', e => {
+            e.stopPropagation();
+            window.location.hash = `#/details?id=${btnJellyfin.dataset.jellyfin}`;
+        });
 
         const btnReq = card.querySelector('.btn-request');
         if (btnReq) btnReq.addEventListener('click', e => { e.stopPropagation(); handleRequest(btnReq.dataset.tmdb, btnReq.dataset.title, btnReq); });

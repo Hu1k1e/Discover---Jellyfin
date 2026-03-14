@@ -56,15 +56,19 @@ jobs:
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           REPO="${{ github.repository }}"
 
-          # Use jq to update the manifest in-place
+          # Use jq to PREPEND a new version object so all releases are visible in Jellyfin
           jq --arg ver "${VERSION}.0" \
              --arg dl "https://github.com/${REPO}/releases/download/v${VERSION}/jellyfin-plugin-upcoming-movies_v${VERSION}.zip" \
              --arg cs "$CHECKSUM" \
              --arg ts "$TIMESTAMP" \
-             '.[0].versions[0].version = $ver |
-              .[0].versions[0].sourceUrl = $dl |
-              .[0].versions[0].checksum = $cs |
-              .[0].versions[0].timestamp = $ts' \
+             '.[0].versions = [{
+                "version": $ver,
+                "changelog": ("Release " + $ver + ". See GitHub for details."),
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": $dl,
+                "checksum": $cs,
+                "timestamp": $ts
+             }] + .[0].versions' \
              manifest.json > manifest_updated.json && \
           mv manifest_updated.json manifest.json
 
