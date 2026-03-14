@@ -1,0 +1,19 @@
+## Ignore build artifacts
+bin/
+obj/
+publish/
+*.user
+*.suo
+.vs/
+
+## Ignore OS files
+.DS_Store
+Thumbs.db
+
+## Ignore compiled output (the workflow builds these fresh)
+*.dll
+*.pdb
+*.zip
+
+## Ignore NuGet cache
+*.nupkg

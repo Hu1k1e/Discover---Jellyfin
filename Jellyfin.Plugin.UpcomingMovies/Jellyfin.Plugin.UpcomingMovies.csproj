@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.UpcomingMovies</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.UpcomingMovies</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reference Jellyfin 10.11.6 packages — ExcludeAssets runtime so they are not bundled in the DLL -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+    <PackageReference Include="Jellyfin.Model" Version="10.11.6">
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Embed all web assets and config page HTML as resources inside the DLL -->
+  <ItemGroup>
+    <None Remove="Configuration\configPage.html" />
+    <EmbeddedResource Include="Configuration\configPage.html" />
+
+    <None Remove="Web\discoverPage.html" />
+    <EmbeddedResource Include="Web\discoverPage.html" />
+
+    <None Remove="Web\discoverPage.js" />
+    <EmbeddedResource Include="Web\discoverPage.js" />
+  </ItemGroup>
+
+</Project>

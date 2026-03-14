@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Upcoming Movies &amp; Recommendations</title>
+</head>
+<body>
+    <div id="UpcomingMoviesConfigPage"
+         data-role="page"
+         class="page type-interior pluginConfigurationPage"
+         data-require="emby-input,emby-button,emby-select,emby-checkbox">
+
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="UpcomingMoviesConfigForm">
+
+                    <h2>API Settings</h2>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="TmdbApiKey">TMDB API Key</label>
+                        <input id="TmdbApiKey" name="TmdbApiKey" type="password" is="emby-input" autocomplete="off" />
+                        <div class="fieldDescription">
+                            Your API key from <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a>.
+                            Required for Upcoming and Recommended sections.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="JellyseerrUrl">Jellyseerr URL</label>
+                        <input id="JellyseerrUrl" name="JellyseerrUrl" type="url" is="emby-input"
+                               placeholder="https://jellyseerr.yourdomain.com" />
+                        <div class="fieldDescription">Full URL of your Jellyseerr instance (no trailing slash needed).</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="JellyseerrApiKey">Jellyseerr API Key</label>
+                        <input id="JellyseerrApiKey" name="JellyseerrApiKey" type="password" is="emby-input" autocomplete="off" />
+                        <div class="fieldDescription">Found in Jellyseerr → Settings → General → API Key.</div>
+                    </div>
+
+                    <h2>Stream Settings</h2>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="StreamBaseUrl">Stream Base URL</label>
+                        <input id="StreamBaseUrl" name="StreamBaseUrl" type="url" is="emby-input"
+                               placeholder="https://stream.hulksmash.ca/movie/" />
+                        <div class="fieldDescription">
+                            The TMDB movie ID will be appended to this URL when "Stream Directly" is clicked.
+                            Example: <code>https://stream.hulksmash.ca/movie/</code>
+                        </div>
+                    </div>
+
+                    <h2>Navigation Placement</h2>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="NavPlacement">Discover Link Location</label>
+                        <select id="NavPlacement" name="NavPlacement" is="emby-select" class="emby-select-withcolor emby-select">
+                            <option value="Sidebar">Sidebar (left drawer)</option>
+                            <option value="Header">Header (top tab bar)</option>
+                        </select>
+                        <div class="fieldDescription">
+                            Choose where the <strong>Discover</strong> navigation link appears.
+                            Sidebar adds it to the left drawer. Header adds it as a tab in the top navigation bar.
+                            A browser refresh is required after changing this setting.
+                        </div>
+                    </div>
+
+                    <h2>Section Visibility</h2>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ShowUpcomingSection" name="ShowUpcomingSection" type="checkbox" is="emby-checkbox" />
+                            <span>Show Upcoming Movies section</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ShowRecommendationsSection" name="ShowRecommendationsSection" type="checkbox" is="emby-checkbox" />
+                            <span>Show Recommended Movies section</span>
+                        </label>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="ShowWatchlistSection" name="ShowWatchlistSection" type="checkbox" is="emby-checkbox" />
+                            <span>Show My Watchlist section</span>
+                        </label>
+                        <div class="fieldDescription" style="margin-top:0.3em;">
+                            Displays movies you have marked as <strong>Liked</strong> in Jellyfin (KefinTweaks Watchlist compatible).
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2em;">
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var UpcomingMoviesConfig = {
+                pluginUniqueId: 'a3f7c2e1-9b4d-4a1c-8e5f-d6b2a0c3f9e8'
+            };
+
+            document.querySelector('#UpcomingMoviesConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(UpcomingMoviesConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#TmdbApiKey').value                   = config.TmdbApiKey || '';
+                        document.querySelector('#JellyseerrUrl').value                = config.JellyseerrUrl || '';
+                        document.querySelector('#JellyseerrApiKey').value             = config.JellyseerrApiKey || '';
+                        document.querySelector('#StreamBaseUrl').value                = config.StreamBaseUrl || '';
+                        document.querySelector('#NavPlacement').value                 = config.NavPlacement || 'Sidebar';
+                        document.querySelector('#ShowUpcomingSection').checked        = config.ShowUpcomingSection !== false;
+                        document.querySelector('#ShowRecommendationsSection').checked = config.ShowRecommendationsSection !== false;
+                        document.querySelector('#ShowWatchlistSection').checked       = config.ShowWatchlistSection !== false;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#UpcomingMoviesConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(UpcomingMoviesConfig.pluginUniqueId).then(function (config) {
+                        config.TmdbApiKey                  = document.querySelector('#TmdbApiKey').value;
+                        config.JellyseerrUrl               = document.querySelector('#JellyseerrUrl').value;
+                        config.JellyseerrApiKey            = document.querySelector('#JellyseerrApiKey').value;
+                        config.StreamBaseUrl               = document.querySelector('#StreamBaseUrl').value;
+                        config.NavPlacement                = document.querySelector('#NavPlacement').value;
+                        config.ShowUpcomingSection         = document.querySelector('#ShowUpcomingSection').checked;
+                        config.ShowRecommendationsSection  = document.querySelector('#ShowRecommendationsSection').checked;
+                        config.ShowWatchlistSection        = document.querySelector('#ShowWatchlistSection').checked;
+
+                        ApiClient.updatePluginConfiguration(UpcomingMoviesConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>

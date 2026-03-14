@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Discover</title>
+</head>
+<body>
+    <!--
+        discoverPage.html
+        Embedded plugin page served at: /web/configurationpage?name=discoverPage
+        This page is loaded by the Jellyfin SPA when the hash navigates to #/discoverPage.html
+        All rendering is driven by discoverPage.js which is auto-loaded separately.
+    -->
+    <div id="DiscoverPage"
+         data-role="page"
+         class="page libraryPage backdropPage"
+         data-backdroptype="movie">
+
+        <div data-role="content">
+            <div class="content-primary">
+
+                <!-- Page Header -->
+                <div class="sectionTitleContainer" style="display:flex; align-items:center; margin-bottom: 1.5em;">
+                    <h2 class="sectionTitle">Discover</h2>
+                </div>
+
+                <!-- ── Section 1: Upcoming Movies ── -->
+                <div id="discoverUpcomingSection">
+                    <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
+                        <h2 class="sectionTitle sectionTitle-cards">🎬 Upcoming Movies</h2>
+                    </div>
+                    <div id="discoverUpcomingItems" class="itemsContainer padded-left padded-right vertical-wrap">
+                        <div class="discover-loading">Loading upcoming movies…</div>
+                    </div>
+                </div>
+
+                <!-- ── Section 2: Recommended Movies ── -->
+                <div id="discoverRecommendedSection" style="margin-top:2em;">
+                    <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
+                        <h2 class="sectionTitle sectionTitle-cards">⭐ Recommended For You</h2>
+                    </div>
+                    <div id="discoverRecommendedItems" class="itemsContainer padded-left padded-right vertical-wrap">
+                        <div class="discover-loading">Loading recommendations…</div>
+                    </div>
+                </div>
+
+                <!-- ── Section 3: My Watchlist ── -->
+                <div id="discoverWatchlistSection" style="margin-top:2em;">
+                    <div class="sectionTitleContainer sectionTitleContainer-cards padded-left">
+                        <h2 class="sectionTitle sectionTitle-cards">📋 My Watchlist</h2>
+                    </div>
+                    <div id="discoverWatchlistItems" class="itemsContainer padded-left padded-right vertical-wrap">
+                        <div class="discover-loading">Loading watchlist…</div>
+                    </div>
+                </div>
+
+            </div><!-- /content-primary -->
+        </div><!-- /data-role=content -->
+    </div><!-- /DiscoverPage -->
+
+    <style>
+        /* ────────────────────────────────────────────
+           Discover Page — supplemental styles
+           All colours use Jellyfin CSS variables so
+           they adapt to every user theme automatically
+        ──────────────────────────────────────────── */
+
+        #DiscoverPage .discover-loading {
+            color: var(--text-color-secondary, #aaa);
+            padding: 1em 0;
+        }
+
+        /* Movie card grid */
+        #DiscoverPage .itemsContainer {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5em;
+        }
+
+        /* Individual discover card wrapper */
+        #DiscoverPage .discover-card {
+            position: relative;
+            width: 160px;
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+
+        /* Poster image fills the card */
+        #DiscoverPage .discover-card img {
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            object-fit: cover;
+            border-radius: 4px;
+            display: block;
+        }
+
+        /* Placeholder when poster is missing */
+        #DiscoverPage .discover-card .no-poster {
+            width: 100%;
+            aspect-ratio: 2 / 3;
+            background: var(--background-color, #222);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3em;
+        }
+
+        /* Title text */
+        #DiscoverPage .discover-card .discover-card-title {
+            font-size: 0.85em;
+            margin-top: 0.3em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-color, #fff);
+        }
+
+        /* Release date sub-text */
+        #DiscoverPage .discover-card .discover-card-date {
+            font-size: 0.75em;
+            color: var(--text-color-secondary, #999);
+        }
+
+        /* Hover overlay that reveals the action buttons */
+        #DiscoverPage .discover-card .discover-card-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            bottom: 28px; /* leave space for title */
+            border-radius: 4px;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5em;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            padding: 0.5em;
+        }
+
+        #DiscoverPage .discover-card:hover .discover-card-overlay {
+            opacity: 1;
+        }
+
+        /* Action buttons inside the overlay */
+        #DiscoverPage .discover-card .discover-card-overlay button {
+            width: 100%;
+            font-size: 0.75em;
+            padding: 0.4em 0.6em;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        #DiscoverPage .discover-card .btn-request {
+            background: var(--accent-color, #00a4dc);
+            color: #fff;
+        }
+
+        #DiscoverPage .discover-card .btn-stream {
+            background: #e64040;
+            color: #fff;
+        }
+
+        /* Mobile: smaller cards */
+        @media (max-width: 600px) {
+            #DiscoverPage .discover-card {
+                width: 120px;
+            }
+        }
+
+        /* Error / empty state */
+        #DiscoverPage .discover-error {
+            color: #e64040;
+            padding: 1em 0;
+            font-size: 0.9em;
+        }
+
+        /* Section hide helper */
+        .discover-hidden {
+            display: none !important;
+        }
+    </style>
+
+</body>
+</html>

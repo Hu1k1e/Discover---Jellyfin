@@ -1,0 +1,102 @@
+name: Build & Release Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'           # triggers on version tags like v1.0.0
+  workflow_dispatch:   # allows manual trigger from GitHub Actions UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed for creating GitHub releases
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore NuGet packages
+        run: dotnet restore ./Jellyfin.Plugin.UpcomingMovies/Jellyfin.Plugin.UpcomingMovies.csproj
+
+      - name: Build plugin (Release)
+        run: |
+          dotnet build ./Jellyfin.Plugin.UpcomingMovies/Jellyfin.Plugin.UpcomingMovies.csproj \
+            --configuration Release \
+            --no-restore \
+            -o ./publish
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Create plugin ZIP
+        run: |
+          cd publish
+          # Only include the plugin DLL (no runtime deps — they are ExcludeAssets)
+          zip -j ../jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip \
+            Jellyfin.Plugin.UpcomingMovies.dll
+
+      - name: Compute SHA256 checksum
+        id: checksum
+        run: |
+          CHECKSUM=$(sha256sum jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip | awk '{print $1}')
+          echo "CHECKSUM=${CHECKSUM}" >> $GITHUB_OUTPUT
+          echo "Plugin ZIP SHA256: ${CHECKSUM}"
+
+      - name: Update manifest.json with new version data
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          CHECKSUM=${{ steps.checksum.outputs.CHECKSUM }}
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          REPO="${{ github.repository }}"
+
+          # Use jq to update the manifest in-place
+          jq --arg ver "${VERSION}.0" \
+             --arg dl "https://github.com/${REPO}/releases/download/v${VERSION}/jellyfin-plugin-upcoming-movies_v${VERSION}.zip" \
+             --arg cs "$CHECKSUM" \
+             --arg ts "$TIMESTAMP" \
+             '.[0].versions[0].version = $ver |
+              .[0].versions[0].sourceUrl = $dl |
+              .[0].versions[0].checksum = $cs |
+              .[0].versions[0].timestamp = $ts' \
+             manifest.json > manifest_updated.json && \
+          mv manifest_updated.json manifest.json
+
+      - name: Commit updated manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "chore: update manifest for v${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
+          git push origin HEAD:main || echo "Push skipped (detached HEAD or no changes)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Jellyfin Plugin — Upcoming Movies & Recommendations v${{ steps.version.outputs.VERSION }}
+
+            ### Installation via Plugin Repository URL
+            1. In Jellyfin, go to **Dashboard → Plugins → Repositories**.
+            2. Add repository URL:
+               ```
+               https://raw.githubusercontent.com/${{ github.repository }}/main/manifest.json
+               ```
+            3. Go to **Catalog**, find **Upcoming Movies & Recommendations**, and install.
+            4. Restart Jellyfin.
+
+            ### Manual Installation
+            Download the ZIP below, extract the `.dll` into your Jellyfin plugins directory, and restart.
+
+            **ZIP SHA256:** `${{ steps.checksum.outputs.CHECKSUM }}`
+          files: |
+            jellyfin-plugin-upcoming-movies_v${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false
