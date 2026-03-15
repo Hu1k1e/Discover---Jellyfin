@@ -653,33 +653,56 @@ In **Dashboard → Plugins → Upcoming Movies → Auto-Watchlist**:
 
 ---
 
-## Phase 30 — Watchlist Sync Fix (2026-03-15) ✅
+## Phase 30 — Watchlist Auth Fix Attempt (2026-03-15) ⚠️ Incomplete
 
 **Release: v1.0.46**
 
-### Root Cause Found
+### What Was Fixed
+Fixed the auth header from `X-Emby-Token` (raw token) to `X-Emby-Authorization` with the full `MediaBrowser` format. Also fixed `client._serverAddress` (private) → `client.serverAddress()` (method). However, **the endpoint `/LikedItems/` was still wrong** — movie still did not appear in KefinTweaks watchlist.
 
-KefinTweaks watchlist uses Jellyfin's `UserData.Likes` field (not `IsFavorite` or `IsWatchlisted`). The plugin's `addToWatchlist()` / `removeFromWatchlist()` were calling the correct API endpoint (`/Users/{uid}/LikedItems/{id}`) but with the **wrong auth header**, causing silent 401/403 failures:
+---
 
-| | Before (broken) | After (fixed) |
+## Phase 31 — Watchlist Definitive Fix (2026-03-15) ✅
+
+**Release: v1.0.47**
+
+### Root Cause (Final)
+
+Analysed two reference implementations:
+1. **swiparr** (`src/lib/providers/jellyfin/index.ts`) — `toggleWatchlist` implementation
+2. **KefinTweaks** `apiHelper.js` — `getAuthHeader()`, `getData()`, and `getWatchlistItems()`
+
+The **`/LikedItems/` endpoint does not exist** in modern Jellyfin. The correct endpoint confirmed from swiparr source:
+
+```
+POST /Users/{userId}/Items/{itemId}/Rating?Likes=true   → add to watchlist
+POST /Users/{userId}/Items/{itemId}/Rating?Likes=false  → remove from watchlist
+```
+
+The Likes query parameter sets `UserData.Likes`, which is what KefinTweaks reads to populate its watchlist.
+
+### Auth Header Fix
+
+| | Phase 30 (still wrong) | Phase 31 (correct) |
 |---|---|---|
-| Header key | `X-Emby-Token` | `X-Emby-Authorization` |
-| Header value | raw token string | `MediaBrowser Token="...", Client="...", Device="...", DeviceId="...", Version="..."` |
-| Server address | `client._serverAddress` (private prop) | `client.serverAddress()` (method call) |
+| Header key | `X-Emby-Authorization` | `Authorization` |
+| Header value | `MediaBrowser Token="...", Client="...", ...` | `MediaBrowser Token="<token>"` |
+| Method (remove) | `DELETE` | `POST` (with `?Likes=false`) |
+| Endpoint | `/Users/{uid}/LikedItems/{id}` | `/Users/{uid}/Items/{id}/Rating?Likes=` |
 
-Jellyfin's REST API requires the full `MediaBrowser` format in `X-Emby-Authorization`. The rest of the codebase already used `getJellyfinAuthHeader()` which builds this string — the watchlist helpers were simply not using it.
+swiparr's `getAuthenticatedHeaders()` uses `'Authorization': 'MediaBrowser Token="..."'` — **the key is `Authorization` (not `X-Emby-Authorization`)**.
 
-### KefinTweaks Watchlist API (Confirmed)
+### Confirmed API Contract (from swiparr + KefinTweaks)
 
-| Action | Endpoint | Effect |
-|--------|----------|--------|
-| Add to watchlist | `POST /Users/{userId}/LikedItems/{itemId}` | Sets `UserData.Likes = true` |
-| Remove from watchlist | `DELETE /Users/{userId}/LikedItems/{itemId}` | Clears `UserData.Likes` |
-| Fetch watchlist | `window.apiHelper.getWatchlistItems()` | Queries items with `Filters=IsLiked` |
-| Initial state | `item.UserData.Likes` | Read on library fetch in `tmdbMap` |
+| Action | Method | Endpoint | Header |
+|--------|--------|----------|--------|
+| Add to watchlist | `POST` | `/Users/{uid}/Items/{id}/Rating?Likes=true` | `Authorization: MediaBrowser Token="<token>"` |
+| Remove from watchlist | `POST` | `/Users/{uid}/Items/{id}/Rating?Likes=false` | `Authorization: MediaBrowser Token="<token>"` |
+| Read watchlist state | — | `UserData.Likes` field in Items response | — |
 
 ### Files Modified
 
 | File | Change |
 |------|--------|
-| `Web/discoverPage.js` | Fixed `addToWatchlist()` and `removeFromWatchlist()` to use `X-Emby-Authorization` header with `getJellyfinAuthHeader()` and `client.serverAddress()` |
+| `Web/discoverPage.js` | `addToWatchlist()`: endpoint changed to `POST /Rating?Likes=true`, header to `Authorization: MediaBrowser Token="<token>"` |
+| `Web/discoverPage.js` | `removeFromWatchlist()`: endpoint changed to `POST /Rating?Likes=false` (was `DELETE /LikedItems/`) |
