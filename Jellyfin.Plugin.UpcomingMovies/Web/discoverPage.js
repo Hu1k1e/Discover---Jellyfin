@@ -206,7 +206,10 @@
 
             /* Hover Colors */
             .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
-            .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; font-size: 10px !important; }
+            /* Base requested style (no font-size change — upcoming cards have 1 button, plenty of space) */
+            .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; }
+            /* Only squeeze font in recommended cards where Request + Stream sit side-by-side */
+            .discover-card:not(.upcoming-card) .btn-request.requested { font-size: 10px !important; }
             .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
 
