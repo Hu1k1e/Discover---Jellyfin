@@ -695,7 +695,10 @@
     var WL_SVG_OFF = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/></svg>';
     var WL_SVG_ON  = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>';
 
-    // ── Watchlist API helper (uses Jellyfin Favorites — same as KefinTweaks) ──
+    // ── Watchlist API helper (uses Jellyfin Likes = KefinTweaks Watchlist) ──
+    // KefinTweaks watchlist stores items as UserData.Likes = true
+    // and queries them via Filters=Likes on the Items endpoint.
+    // The corresponding Jellyfin REST API is /Users/{uid}/LikedItems/{id}.
     async function addToWatchlist(jellyfinId) {
         var client = window.ApiClient;
         if (!client) return;
@@ -704,11 +707,11 @@
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
         if (!uid) return;
         try {
-            var res = await fetch(server + '/Users/' + uid + '/FavoriteItems/' + jellyfinId, {
+            var res = await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
                 method: 'POST',
                 headers: { 'X-Emby-Token': token }
             });
-            if (!res.ok) WARN('[Watchlist] POST FavoriteItems failed:', res.status);
+            if (!res.ok) WARN('[Watchlist] POST LikedItems failed:', res.status);
         } catch (err) {
             WARN('[Watchlist] network error:', err);
         }
@@ -722,7 +725,7 @@
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
         if (!uid) return;
         try {
-            await fetch(server + '/Users/' + uid + '/FavoriteItems/' + jellyfinId, {
+            await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
                 method: 'DELETE',
                 headers: { 'X-Emby-Token': token }
             });
@@ -1195,7 +1198,7 @@
                             tmdbMap[tid] = {
                                 id: item.Id,
                                 played: item.UserData && item.UserData.Played,
-                                isWatchlisted: !!(item.UserData && item.UserData.IsFavorite)
+                                isWatchlisted: !!(item.UserData && item.UserData.Likes)
                             };
                         }
                     });
