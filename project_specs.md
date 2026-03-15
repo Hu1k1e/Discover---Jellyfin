@@ -207,9 +207,18 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Per-user Personalized Recommendations | Rewrote `fetchRecommendations()` in JS to build a full per-user signal profile from Jellyfin APIs: (a) Watch history — last 100 movies with `People` field; directors get 2× genre weight, actors get 1×; recency bonus (idx<20 = 3×, else 1×). (b) Favorites — 50 movies at 5× weight. Sends `tmdbIds` (8 seeds), `genreIds` (5), `directorIds` (3 top directors), `actorIds` (3 top actors) to backend. |
 | Backend Recommendation Engine | `TmdbController.GetRecommendations` adds `directorIds`/`actorIds` params. New data sources: `/movie/{id}/similar` for top 3 seeds; `/discover/movie?with_people={directors\|actors}` for people-based discovery. Seeds expanded 5→8. Results expanded Take(30)→Take(40). |
 
+## Phase 18 — Request Modal Fix & Requested State (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Request modal broken/behind cards | Root cause: CSS comment at line 269 was missing its opening `/*` — the line read `REQUEST MODAL...` followed by `*/` with no matching open. This caused the CSS parser to treat the `.dcm-backdrop`, `.dcm-box`, `.dcm-header`, `.dcm-footer`, and all sibling rules as invalid, so the modal rendered with no styling. Fixed by adding `/*` to open the comment block. |
+| Request modal z-index | Bumped `.dcm-backdrop` `z-index` from `9998` → `10000` so it always renders above card `transform` stacking contexts that CSS creates for `.discover-card`. |
+| Requested button state | `buildCard()` now checks `window._jellyseerrRequests.has(String(tmdbId))` before rendering the Request button. Already-requested movies render a disabled `✓ Requested` button with `opacity:0.65` and `pointer-events:none` on both recommendation cards and upcoming cards. |
+| CSS: requested button disabled | Added global `.btn-request.requested` rule: `opacity:0.65 !important; cursor:default !important; pointer-events:none !important;` so the button is visually and functionally disabled everywhere. |
+
 # 10. Current Status
 
-**Latest Release: v1.0.24** — Phase 17 completed (stream modal, logo fix, fully per-user personalized recommendations).
+**Latest Release: v1.0.25** — Phase 18 completed (request modal CSS fix, z-index fix, requested-state button).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
