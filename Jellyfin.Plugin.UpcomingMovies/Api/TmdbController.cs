@@ -328,40 +328,67 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] wl-seed recommendations/{Id} failed", wlId); }
             });
 
-            // ── Source 9: Language-affinity discover (+18) ──────────────────────────────
-            // If the user strongly prefers a non-English language (e.g. Hindi, Tamil, Korean),
-            // fetch content specifically in that language. This surface regional films that the
-            // genre/seed sources alone would not return because those default to en-US.
-            var topLang = profile.LanguageWeights.Count > 0
-                ? profile.LanguageWeights.OrderByDescending(kv => kv.Value).First().Key
-                : "en";
-            var langTask = Task.Run(async () =>
+            // ── Source 9: Language-affinity discover — top non-English languages (+18) ────
+            // Discovers movies specifically in the user's most-watched non-English language(s).
+            // This is the ONLY source that surfaces regional films (Malayalam, Hindi, Korean…)
+            // because all other sources default to TMDB's en-US language preference.
+            //
+            // Activation: any non-English language weight >= 0.5 (triggered by even a single
+            // watched or watchlisted film in that language).
+            //
+            // Up to 2 top non-English languages are fetched in parallel so bilingual users
+            // (e.g., someone who watches both Malayalam and Hindi) get both covered.
+            var topNonEnglishLangs = profile.LanguageWeights
+                .Where(kv => kv.Key != "en" && kv.Value >= 0.5)
+                .OrderByDescending(kv => kv.Value)
+                .Take(2)
+                .Select(kv => kv.Key)
+                .ToList();
+
+            var langTasks = topNonEnglishLangs.Select(async langCode =>
             {
-                // Only run if the top language is non-English AND has meaningful weight
-                if (topLang == "en" || profile.LanguageWeights.GetValueOrDefault(topLang) < 2.5) return;
                 try
                 {
                     var tmdbPageLang = ((page - 1) % 10) + 1;
                     var genreFilter = topGenres.Count > 0
                         ? "&with_genres=" + Uri.EscapeDataString(string.Join("|", topGenres.Take(3)))
                         : string.Empty;
+                    // Fetch with genre filter first for precision
                     var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
-                            + $"&with_original_language={topLang}"
-                            + $"&sort_by=vote_average.desc&vote_count.gte=50&page={tmdbPageLang}{genreFilter}";
+                            + $"&with_original_language={langCode}"
+                            + $"&sort_by=vote_average.desc&vote_count.gte=20&page={tmdbPageLang}{genreFilter}";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
+                    var resultCount = 0;
                     if (doc.RootElement.TryGetProperty("results", out var results))
                     {
                         foreach (var m in results.EnumerateArray())
                         {
-                            // Override language allowlist for user's top language
                             AddCandidate(m, 18.0, bypassLangFilter: true);
+                            resultCount++;
+                        }
+                    }
+                    // If genre filter returned <5 results, also fetch without genre restriction
+                    // so the user always gets regional films even in niche genre combos
+                    if (resultCount < 5)
+                    {
+                        var fallbackUrl = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
+                                        + $"&with_original_language={langCode}"
+                                        + $"&sort_by=vote_average.desc&vote_count.gte=20&page={tmdbPageLang}";
+                        var fb = await client.GetAsync(fallbackUrl).ConfigureAwait(false);
+                        if (fb.IsSuccessStatusCode)
+                        {
+                            var fbJson = await fb.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            using var fbDoc = JsonDocument.Parse(fbJson);
+                            if (fbDoc.RootElement.TryGetProperty("results", out var fbResults))
+                                foreach (var m in fbResults.EnumerateArray())
+                                    AddCandidate(m, 15.0, bypassLangFilter: true);
                         }
                     }
                 }
-                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] lang-affinity source failed"); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] lang-affinity ({Lang}) failed", langCode); }
             });
 
             // Run all sources in parallel for speed
@@ -369,13 +396,14 @@ public class TmdbController : ControllerBase
                 Task.WhenAll(seedTasks),
                 Task.WhenAll(simTasks),
                 Task.WhenAll(wlSeedTasks),
+                Task.WhenAll(langTasks),
                 genreTask,
                 directorTask,
                 actorTask,
                 trendingTask,
-                popularTask,
-                langTask
+                popularTask
             ).ConfigureAwait(false);
+
 
             // ── Scoring engine ─────────────────────────────────────────────────────────────
             // Genre weights are log-normalised via NW() to prevent a single repeated genre

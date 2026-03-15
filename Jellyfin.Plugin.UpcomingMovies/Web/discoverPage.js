@@ -1301,10 +1301,11 @@
                 });
                 renderTmdbCards(chunk, rowRec, streamBaseUrl, false, false);
 
-                if (btnMore && (_tmdbRecBuffer.length > 0 || _tmdbRecPage <= _tmdbRecTotalPages)) {
+                if (btnMore) {
                     btnMore.style.display = 'inline-block';
                     btnMore.addEventListener('click', async function() {
                         btnMore.textContent = 'Loading...';
+                        btnMore.disabled = true;
                         try {
                             var cw = rowRec.clientWidth || 1000;
                             var dynCols = Math.floor((cw + 24) / (150 + 24));
@@ -1312,7 +1313,7 @@
                             var dynTargetCount = dynCols * 3;
 
                             await ensureRecommendationsBuffer(dynTargetCount);
-                            
+
                             // Round down to full rows so last row is always complete
                             var dynAvail = _tmdbRecBuffer.length;
                             var dynFullRows = Math.floor(dynAvail / dynCols) * dynCols;
@@ -1329,19 +1330,30 @@
                             if (nextChunk.length > 0) {
                                 renderTmdbCards(nextChunk, rowRec, streamBaseUrl, false, true);
                             }
-                            
+
+                            // ── Infinite scroll: never hide the button ──────────────────
+                            // When the backend page cycle is exhausted, wrap back to page 1
+                            // and clear the _renderedRecIds for a fresh cycle so the user
+                            // keeps getting movies indefinitely.
                             if (_tmdbRecBuffer.length === 0 && _tmdbRecPage > _tmdbRecTotalPages) {
-                                btnMore.style.display = 'none';
-                            } else {
-                                btnMore.textContent = 'Discover More';
+                                // Wrap: restart the backend page cycle from page 2
+                                // (page 1 is reserved for initial load)
+                                _tmdbRecPage = 2;
+                                _renderedRecIds.clear();
+                                LOG('Infinite scroll: wrapped page cycle back to page 2');
                             }
+
+                            btnMore.textContent = 'Discover More';
+                            btnMore.disabled = false;
                         } catch (err) {
+                            ERR('Discover More error:', err);
                             btnMore.textContent = 'Error Loading. Try Again';
+                            btnMore.disabled = false;
                         }
+
                     });
-                } else if (btnMore) {
-                    btnMore.style.display = 'none';
-                }
+
+
             }
             else { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
