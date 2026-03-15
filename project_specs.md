@@ -480,4 +480,51 @@ The following Jellyfin types moved to `Jellyfin.Data.Enums` or were removed from
 | Recommendation scoring | New movies dominated (recency +12/-8) | Reduced to `+4` for ≤2yr old, `-3` for >10yr old — older classics now surface via quality (vote_avg ×6.0) |
 | Duplicate cards | Same movie could appear twice from parallel TMDB sources | Frontend `Set`-based dedup in `renderTmdbCards` — filters already-seen TMDB IDs before rendering |
 | Bug: `ObjectDisposedException` | `JsonDocument` disposed while scoring LINQ accessed elements | `movie.Clone()` in `AddCandidate()` — independent copy survives `using var doc` scope (v1.0.34) |
+
+---
+
+## Phase 23 — Modal Ratings + Card Polish (2026-03-15) ✅
+
+**Latest Release: v1.0.36**
+
+### Changes
+
+| Area | Issue | Fix |
+|------|-------|-----|
+| Movie detail modal | No ratings shown | Added 🍅 RT / ⭐ IMDB / 🎬 Jellyfin badges. Jellyfin score instant (from `voteAverage`), IMDB + RT async-loaded via new `/UpcomingMovies/tmdb/ratings` endpoint |
+| Ratings endpoint | N/A | New `GET /UpcomingMovies/tmdb/ratings?tmdbId={id}` — fetches TMDB details for `imdb_id`, then OMDB for IMDB rating + RT % if `OmdbApiKey` configured |
+| Plugin config | N/A | Added optional `OmdbApiKey` field (PluginConfiguration.cs + configPage.html). Free key at omdbapi.com/apikey.aspx |
+| Play button | Circle/border around icon | Removed `border` and `background` from `.dc-jellyfin-play-btn` — now just the play icon with drop-shadow on hover |
+| Card `Requested` text | Still overflowing at 12px | Added `font-size: 10px !important` specifically for `.btn-request.requested` state |
+| Close button (X) | Small — hard to hit | Increased X font-size + touch target in `.htv-modal-close` (`font-size: 28px`, `width/height: 44px`) |
+
+### Architecture Notes
+
+- IMDB badge is clickable → opens `imdb.com/title/{imdbId}/` in new tab when IMDB ID is available
+- Ratings fetch is fire-and-forget (`.catch(() => {})`) — failure is silent, badges show `—` as fallback
+- `OmdbApiKey` stored server-side; never exposed to frontend
+
+---
+
+## Phase 24 — Language Affinity Scoring Boost (2026-03-15) ✅
+
+**Latest Release: v1.0.37**
+
+### Scoring Table (updated)
+
+| Factor | Formula | Notes |
+|--------|---------|-------|
+| Source bonus | Direct | Director source +25, Actor source +20, Seed /rec +30, Seed /similar +15, Trending +5 |
+| Genre affinity | `profile.GenreWeights[gid] × 2.0` | Per matching genre |
+| **Language affinity** | **`profile.LanguageWeights[lang] × 4.0`** | **Was × 2.0 — doubled to strongly prefer watched-language films** |
+| Quality | `vote_average × 6.0` | Max ~60 pts |
+| Popularity | `min(pop, 100) × 0.5` | Max 50 pts, capped |
+| Recency | `+4` if ≤2yr, `−3` if >10yr | Gentle nudge only |
+
+### Rationale
+With typical `LanguageWeights["en"] ≈ 10–15` for a heavy English watcher:
+- At **× 2.0**: language adds ~20–30 pts → a 9.0/10 Spanish film (54 pts) easily wins
+- At **× 4.0**: language adds **~40–60 pts** → preferred-language films now match or beat quality of unpreferred-language films
+
+A sub-par English film (6.0/10 = 36 quality + 50 language ≈ 86) will now outrank a great Spanish film (9.0/10 = 54 + 0 language = 54) for a heavy English watcher. Foreign language films can still appear when the user **has** watched some of that language.
 
