@@ -185,11 +185,21 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Jellyseerr Pre-Load O(1) Display | Altered `JellyseerrController.cs` to expose `[HttpGet("requests")]`, proxying Jellyseerr's bulk `/api/v1/request?take=3000`. `discoverPage.js` hits this URL on load, caching the TMDB IDs into `window._jellyseerrRequests = new Set()`. `buildCard()` executes an O(1) hash check, immediately painting the `.btn-request.requested` Checkmark button natively on Grid generation! |
 | Immersive Blueprint Blur | Wrapped the `.htv-modal-backdrop` and applied the exact `filter: blur(12px) brightness(50%) saturate(120%);` as specified in user's UI theme. Spliced the authentic Jellyseerr Indigo Purple `#667BC6` into the hover states! |
 
+## Phase 16 — UI Polish & Grid Fixes (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Discover Removed from Header | Removed header-tab injection block from `injectNativeNavigation()`. Plugin no longer appends a Discover `<button>` to `.headerTabs` — user controls sidebar entry via their own manual JS inject. |
+| Request Button Purple | Fixed `.btn-request:hover` / `.htv-modal-actions .btn-request:hover` from `#667BC6` (slate-blue) → `#7B5EA7` (genuine Jellyseerr brand purple). |
+| Larger Close (×) Button | Increased `.htv-modal-close` from `40×40px / font-size 24px` → `52×52px / font-size 28px` for easier mobile tap targets. |
+| Card/Title Alignment | Removed `padding: 0 2%` from `.discover-row-wrap`. The inner row's `padded-left` / `padded-right` provides correct inset — removing the wrapper padding aligns section headings with card edges. |
+| Full Grid Rows | Changed `auto-fill` → `auto-fit` in `discover-grid`. `sliceCount` is now rounded down to the nearest multiple of `cols` for both initial load and Discover More, guaranteeing complete rows. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.21** — Phase 15 completed (Grid Buffers, O(1) Cached Requests, Modal Blur).
+**Latest Release: v1.0.23** — Phase 16 completed (UI polish: purple hover, larger close, full-row grid, alignment, no Discover header tab).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
