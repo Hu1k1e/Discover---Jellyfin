@@ -1,19 +1,16 @@
 using System;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading.Tasks;
-using Jellyfin.Plugin.UpcomingMovies.Services;
-using MediaBrowser.Controller.Entities.Movies;
-using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.UpcomingMovies.Services;
 
 /// <summary>
-/// Listens for ILibraryManager.ItemAdded events.
-/// When a Movie arrives in the Jellyfin library, checks whether any user requested
-/// it via Jellyseerr through our plugin. If yes, adds it to that user's
-/// Jellyfin watchlist automatically by calling the local Jellyfin REST API.
+/// Handles auto-watchlist fulfilment when a requested movie becomes available.
+/// Called explicitly from the JellyseerrWebhookController when Jellyseerr sends
+/// a "media.available" notification, or directly via the /watchlist/fulfill endpoint.
+/// This avoids using ILibraryManager.ItemAdded (which has fragile type dependencies
+/// across Jellyfin versions) in favour of a webhook-driven approach.
 /// </summary>
 public class LibraryItemAddedConsumer
 {
@@ -32,49 +29,39 @@ public class LibraryItemAddedConsumer
     }
 
     /// <summary>
-    /// Wired to ILibraryManager.ItemAdded in Plugin.cs constructor.
-    /// Fires whenever any item is added to the library; we filter to Movies only.
+    /// Called when a movie with the given TMDB ID has just become available in Jellyfin.
+    /// Looks up all users who requested it and adds it to their Jellyfin watchlists.
     /// </summary>
-    public void OnItemAdded(object? sender, ItemChangeEventArgs e)
+    /// <param name="tmdbId">TMDB ID of the movie that is now available.</param>
+    /// <param name="jellyfinItemId">Jellyfin item ID (GUID as string without dashes).</param>
+    public Task FulfillAsync(int tmdbId, string jellyfinItemId)
+        => FulfillWatchlistAsync(jellyfinItemId, tmdbId);
+
+    private async Task FulfillWatchlistAsync(string jellyfinItemId, int tmdbId)
     {
-        if (e.Item is not Movie movie) return;
-
-        // Needs a TMDB ID to match against pending entries
-        if (!movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) ||
-            !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
-            return;
-
         var pendingUserIds = _pendingService.GetPendingUserIds(tmdbId);
         if (pendingUserIds.Count == 0) return;
 
         _logger.LogInformation(
-            "[UpcomingMovies] Movie tmdbId={TmdbId} ('{Title}') added to library — auto-watchlisting for {Count} user(s)",
-            tmdbId, movie.Name, pendingUserIds.Count);
+            "[UpcomingMovies] Fulfilling watchlist for tmdbId={TmdbId} jellyfinId={JellyfinId} ({Count} user(s))",
+            tmdbId, jellyfinItemId, pendingUserIds.Count);
 
-        // Fire-and-forget — don't block the library add event
-        Task.Run(() => FulfillWatchlistAsync(movie.Id.ToString("N"), tmdbId, pendingUserIds));
-    }
-
-    private async Task FulfillWatchlistAsync(string jellyfinItemId, int tmdbId, System.Collections.Generic.List<string> userIds)
-    {
-        var apiKey = Plugin.Instance?.Configuration?.JellyfinLocalApiKey;
+        var apiKey   = Plugin.Instance?.Configuration?.JellyfinLocalApiKey;
         var localUrl = Plugin.Instance?.Configuration?.JellyfinLocalUrl?.TrimEnd('/');
 
         if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(localUrl))
         {
             _logger.LogWarning(
-                "[UpcomingMovies] Cannot auto-watchlist: JellyfinLocalUrl or JellyfinLocalApiKey not configured in plugin settings.");
+                "[UpcomingMovies] Cannot auto-watchlist: JellyfinLocalUrl or JellyfinLocalApiKey not configured.");
             return;
         }
 
         var client = _httpClientFactory.CreateClient();
 
-        foreach (var userId in userIds)
+        foreach (var userId in pendingUserIds)
         {
             try
             {
-                // POST /UserWatchlistItems/{itemId}?userId={userId}
-                // Jellyfin 10.11+ — sets UserData.IsWatchlisted = true
                 var url = $"{localUrl}/UserWatchlistItems/{jellyfinItemId}?userId={userId}";
                 using var req = new HttpRequestMessage(HttpMethod.Post, url);
                 req.Headers.Add("X-Emby-Token", apiKey);
@@ -83,7 +70,7 @@ public class LibraryItemAddedConsumer
                 if (res.IsSuccessStatusCode)
                 {
                     _logger.LogInformation(
-                        "[UpcomingMovies] Auto-watchlisted Jellyfin item {ItemId} for user {UserId}",
+                        "[UpcomingMovies] Auto-watchlisted item {ItemId} for user {UserId}",
                         jellyfinItemId, userId);
                 }
                 else
@@ -99,7 +86,6 @@ public class LibraryItemAddedConsumer
             }
         }
 
-        // Clean up fulfilled entries
         _pendingService.RemovePending(tmdbId);
     }
 }
