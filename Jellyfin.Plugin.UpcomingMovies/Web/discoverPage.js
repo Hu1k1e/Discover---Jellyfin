@@ -164,19 +164,19 @@
             }
             .discover-card.hover-enabled:hover .dc-overlay { opacity: 1; }
 
-            /* ── Jellyfin-style animated play button ── */
+            /* ── Jellyfin-style play icon (no circle — just icon on dark overlay) ── */
             .dc-jellyfin-play-btn {
-                width: 52px; height: 52px; border-radius: 50%;
-                background: rgba(255,255,255,0.15);
-                border: 2px solid rgba(255,255,255,0.9);
+                width: 56px; height: 56px;
+                background: none;
+                border: none;
                 display: flex; align-items: center; justify-content: center;
                 cursor: pointer; pointer-events: auto;
-                transition: background 0.18s ease, transform 0.18s ease;
-                color: #fff;
+                transition: transform 0.18s ease, filter 0.18s ease;
+                color: #fff; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.7));
             }
-            .dc-jellyfin-play-btn:hover { background: rgba(255,255,255,0.30); transform: scale(1.12); }
-            .dc-jellyfin-play-btn:active { transform: scale(0.95); }
-            .dc-jellyfin-play-btn .material-icons { font-size: 30px; user-select: none; }
+            .dc-jellyfin-play-btn:hover { transform: scale(1.18); filter: drop-shadow(0 4px 12px rgba(0,0,0,0.9)) brightness(1.3); }
+            .dc-jellyfin-play-btn:active { transform: scale(0.92); }
+            .dc-jellyfin-play-btn .material-icons { font-size: 52px; user-select: none; }
             /* Hide play button for upcoming cards */
             .discover-card.upcoming-card .dc-jellyfin-play-btn { display: none; }
 
@@ -206,9 +206,24 @@
 
             /* Hover Colors */
             .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
-            .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; }
+            .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; font-size: 10px !important; }
             .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
+
+            /* ── Rating badges in overview modal ── */
+            .htv-ratings-row { display: flex; gap: 10px; margin: 10px 0 2px; flex-wrap: wrap; }
+            .htv-rating-badge {
+                display: inline-flex; align-items: center; gap: 5px;
+                background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
+                border-radius: 6px; padding: 5px 9px; font-size: 13px; font-weight: 600;
+                color: #fff; text-decoration: none; cursor: default; transition: background 0.18s;
+            }
+            .htv-rating-badge.clickable { cursor: pointer; }
+            .htv-rating-badge.clickable:hover { background: rgba(255,255,255,0.2); }
+            .htv-rating-badge .badge-icon { font-size: 15px; }
+            .htv-rating-badge.rt-fresh { color: #fa320a; border-color: rgba(250,50,10,0.4); }
+            .htv-rating-badge.imdb { color: #f5c518; border-color: rgba(245,197,24,0.4); }
+            .htv-rating-badge.jellyfin { color: #00a4dc; border-color: rgba(0,164,220,0.4); }
 
             .discover-loading { padding: 14px 0; color: #999; font-style: italic; }
             .discover-error   { padding: 14px 0; color: #ef5350; line-height: 1.7; }
@@ -687,14 +702,22 @@
         modalHtml += '<div class="htv-modal-info">';
         modalHtml += '<h1 class="htv-modal-title">' + escapeHtml(opts.title) + '</h1>';
         if (opts.date) modalHtml += '<div class="htv-modal-date">' + escapeHtml(opts.date) + '</div>';
-        
-        var overviewText = opts.overview || "No overview available.";
+
+        // Rating badges — Jellyfin/TMDB always shown; IMDB and RT loaded async
+        var tmdbScore = opts.voteAverage ? opts.voteAverage.toFixed(1) : '—';
+        modalHtml += '<div class="htv-ratings-row" id="htv-ratings-' + opts.tmdbId + '">'
+            + '<span class="htv-rating-badge rt-fresh" id="htv-rt-' + opts.tmdbId + '" title="Rotten Tomatoes">🍅 <span>—</span></span>'
+            + '<span class="htv-rating-badge imdb clickable" id="htv-imdb-' + opts.tmdbId + '" title="IMDb">⭐ <span>—</span></span>'
+            + '<span class="htv-rating-badge jellyfin" title="Jellyfin / TMDB community rating">🎬 <span>' + tmdbScore + '</span></span>'
+            + '</div>';
+
+        var overviewText = opts.overview || 'No overview available.';
         modalHtml += '<div class="htv-modal-overview">' + escapeHtml(overviewText) + '</div>';
 
         // Actions
         var actionsHtml = '';
         var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(String(opts.tmdbId))) || false;
-        
+
         var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
         if (isRequested || (existingBtn && existingBtn.classList.contains('requested'))) {
             actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + opts.tmdbId + '" disabled>&#10003; Requested</button>';
@@ -707,10 +730,41 @@
         }
 
         modalHtml += '<div class="htv-modal-actions">' + actionsHtml + '</div>';
-        
+
         modalHtml += '</div></div></div>';
         overlay.innerHTML = modalHtml;
         document.body.appendChild(overlay);
+
+        // Async fetch ratings to fill in IMDB and RT badges
+        if (opts.tmdbId) {
+            fetch('/UpcomingMovies/tmdb/ratings?tmdbId=' + opts.tmdbId, {
+                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+            }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+                if (!data) return;
+                // Update RT badge
+                var rtEl = document.getElementById('htv-rt-' + opts.tmdbId);
+                if (rtEl) {
+                    var rtSpan = rtEl.querySelector('span');
+                    if (rtSpan) rtSpan.textContent = data.rtScore || '—';
+                }
+                // Update IMDB badge — also make it clickable if we have imdbId
+                var imdbEl = document.getElementById('htv-imdb-' + opts.tmdbId);
+                if (imdbEl) {
+                    var imdbSpan = imdbEl.querySelector('span');
+                    if (imdbSpan) imdbSpan.textContent = data.imdbRating ? (data.imdbRating + '/10') : '—';
+                    if (data.imdbId) {
+                        imdbEl.style.cursor = 'pointer';
+                        imdbEl.addEventListener('click', function() {
+                            window.open('https://www.imdb.com/title/' + data.imdbId + '/', '_blank', 'noopener');
+                        });
+                    }
+                }
+                // Update Jellyfin badge with more precise score if available
+                var jfEl = document.querySelector('#htv-ratings-' + opts.tmdbId + ' .jellyfin span');
+                if (jfEl && data.tmdbRating) jfEl.textContent = data.tmdbRating.toFixed(1);
+            }).catch(function() { /* ratings optional, ignore errors */ });
+        }
+
 
         // Force reflow and transition
         window.getComputedStyle(overlay).opacity;

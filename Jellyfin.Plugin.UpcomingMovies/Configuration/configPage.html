@@ -26,6 +26,15 @@
                     </div>
 
                     <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="OmdbApiKey">OMDB API Key <em style="font-weight:normal;color:#aaa;">(optional)</em></label>
+                        <input id="OmdbApiKey" name="OmdbApiKey" type="password" is="emby-input" autocomplete="off" />
+                        <div class="fieldDescription">
+                            Get a free key (1000 req/day) at <a href="https://www.omdbapi.com/apikey.aspx" target="_blank">omdbapi.com</a>.
+                            Required to show IMDB and Rotten Tomatoes ratings in the movie detail popup.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="JellyseerrUrl">Jellyseerr URL</label>
                         <input id="JellyseerrUrl" name="JellyseerrUrl" type="url" is="emby-input"
                                placeholder="https://jellyseerr.yourdomain.com" />
@@ -111,6 +120,7 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(UpcomingMoviesConfig.pluginUniqueId).then(function (config) {
                         document.querySelector('#TmdbApiKey').value                   = config.TmdbApiKey || '';
+                        document.querySelector('#OmdbApiKey').value                   = config.OmdbApiKey || '';
                         document.querySelector('#JellyseerrUrl').value                = config.JellyseerrUrl || '';
                         document.querySelector('#JellyseerrApiKey').value             = config.JellyseerrApiKey || '';
                         document.querySelector('#StreamBaseUrl').value                = config.StreamBaseUrl || '';
@@ -127,6 +137,7 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(UpcomingMoviesConfig.pluginUniqueId).then(function (config) {
                         config.TmdbApiKey                  = document.querySelector('#TmdbApiKey').value;
+                        config.OmdbApiKey                  = document.querySelector('#OmdbApiKey').value;
                         config.JellyseerrUrl               = document.querySelector('#JellyseerrUrl').value;
                         config.JellyseerrApiKey            = document.querySelector('#JellyseerrApiKey').value;
                         config.StreamBaseUrl               = document.querySelector('#StreamBaseUrl').value;

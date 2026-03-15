@@ -408,4 +408,89 @@ public class TmdbController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
+    /// <summary>
+    /// Returns IMDB, Rotten Tomatoes, and TMDB ratings for a movie.
+    /// TMDB rating is always returned (from TMDB API).
+    /// IMDB and RT ratings are returned only when OmdbApiKey is configured.
+    /// </summary>
+    [HttpGet("ratings")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetMovieRatings([FromQuery] int tmdbId = 0)
+    {
+        try
+        {
+            var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
+            if (string.IsNullOrWhiteSpace(apiKey) || tmdbId <= 0)
+                return BadRequest(new { error = "TMDB API key not configured or invalid tmdbId." });
+
+            var client = _httpClientFactory.CreateClient();
+
+            // Fetch full TMDB details to get imdb_id and vote_average
+            var tmdbUrl = $"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}";
+            var tmdbResp = await client.GetAsync(tmdbUrl).ConfigureAwait(false);
+
+            if (!tmdbResp.IsSuccessStatusCode)
+                return StatusCode((int)tmdbResp.StatusCode, new { error = "TMDB API error" });
+
+            var tmdbJson = await tmdbResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var tmdbDoc = JsonDocument.Parse(tmdbJson);
+            var root = tmdbDoc.RootElement;
+
+            var imdbId     = root.TryGetProperty("imdb_id",       out var imdbEl) ? imdbEl.GetString()                                 : null;
+            var tmdbRating = root.TryGetProperty("vote_average",   out var vaEl)  && vaEl.TryGetDouble(out var va)  ? (double?)va       : null;
+            var voteCount  = root.TryGetProperty("vote_count",     out var vcEl)  && vcEl.TryGetInt32(out var vc)   ? (int?)vc          : null;
+
+            // Try OMDB for IMDB + Rotten Tomatoes ratings
+            string? imdbRating = null;
+            string? rtScore    = null;
+
+            var omdbKey = Plugin.Instance?.Configuration?.OmdbApiKey;
+            if (!string.IsNullOrWhiteSpace(omdbKey) && !string.IsNullOrWhiteSpace(imdbId))
+            {
+                try
+                {
+                    var omdbUrl  = $"https://www.omdbapi.com/?i={imdbId}&apikey={omdbKey}";
+                    var omdbResp = await client.GetAsync(omdbUrl).ConfigureAwait(false);
+
+                    if (omdbResp.IsSuccessStatusCode)
+                    {
+                        var omdbJson = await omdbResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        using var omdbDoc = JsonDocument.Parse(omdbJson);
+                        var omdb = omdbDoc.RootElement;
+
+                        // OMDB returns "N/A" when rating not available
+                        if (omdb.TryGetProperty("imdbRating", out var imdbR))
+                        {
+                            var v = imdbR.GetString();
+                            if (!string.IsNullOrEmpty(v) && v != "N/A") imdbRating = v;
+                        }
+
+                        if (omdb.TryGetProperty("Ratings", out var ratings))
+                        {
+                            foreach (var r in ratings.EnumerateArray())
+                            {
+                                var source = r.TryGetProperty("Source", out var sEl) ? sEl.GetString() : null;
+                                var value  = r.TryGetProperty("Value",  out var vEl) ? vEl.GetString() : null;
+                                if (source?.Contains("Rotten Tomatoes", StringComparison.OrdinalIgnoreCase) == true
+                                    && !string.IsNullOrEmpty(value) && value != "N/A")
+                                    rtScore = value;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[UpcomingMovies] OMDB ratings fetch failed for imdbId={ImdbId}", imdbId);
+                }
+            }
+
+            return Ok(new { tmdbRating, voteCount, imdbId, imdbRating, rtScore });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UpcomingMovies] Unhandled exception in GetMovieRatings");
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
+        }
+    }
 }

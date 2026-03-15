@@ -26,6 +26,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public PluginConfiguration()
     {
         TmdbApiKey = string.Empty;
+        OmdbApiKey = string.Empty;
         JellyseerrUrl = string.Empty;
         JellyseerrApiKey = string.Empty;
         StreamBaseUrl = "https://stream.hulksmash.ca/movie/";
@@ -39,6 +40,13 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets the TMDB API key used for fetching upcoming and recommended movies.
     /// </summary>
     public string TmdbApiKey { get; set; }
+
+    /// <summary>
+    /// Gets or sets the OMDB API key used for fetching IMDB and Rotten Tomatoes ratings.
+    /// Free key available at https://www.omdbapi.com/apikey.aspx (1000 req/day).
+    /// Leave empty to skip IMDB/RT ratings in the movie detail modal.
+    /// </summary>
+    public string OmdbApiKey { get; set; }
 
     /// <summary>
     /// Gets or sets the base URL of the user's Jellyseerr instance (e.g. https://jellyseerr.example.com).
