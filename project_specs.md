@@ -554,4 +554,25 @@ A sub-par English film (6.0/10 = 36 quality + 50 language ≈ 86) will now outra
 | Project Hail Mary | Disappeared from Upcoming, appeared in Recommended | Confirmed correct: PHM release date was 2026-02-21 (past today 2026-03-15). TMDB correctly removes released films from upcoming list |
 | Ratings showing "—" | Some movies have no RT/IMDB data in OMDB | Expected for brand-new releases not yet scraped by OMDB. 🎬 Jellyfin badge always shows (direct TMDB source) |
 
+---
+
+## Phase 27 — Recommendation Language Allowlist (2026-03-15) ✅
+
+**Latest Release: v1.0.40**
+
+Added a hard language allowlist in `AddCandidate()` in `TmdbController.cs`. Any movie whose `original_language` is not in the list is rejected before scoring.
+
+| Code | Language |
+|------|----------|
+| `en` | English / Hollywood |
+| `hi` | Hindi |
+| `ta` | Tamil |
+| `ml` | Malayalam |
+| `te` | Telugu |
+| `ko` | Korean |
+| `ja` | Japanese / Anime |
+
+All other languages (Spanish, French, Chinese, etc.) are silently excluded from the recommendation candidate pool.
+
+
 
