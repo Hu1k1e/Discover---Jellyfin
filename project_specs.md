@@ -527,4 +527,17 @@ With typical `LanguageWeights["en"] ≈ 10–15` for a heavy English watcher:
 - At **× 4.0**: language adds **~40–60 pts** → preferred-language films now match or beat quality of unpreferred-language films
 
 A sub-par English film (6.0/10 = 36 quality + 50 language ≈ 86) will now outrank a great Spanish film (9.0/10 = 54 + 0 language = 54) for a heavy English watcher. Foreign language films can still appear when the user **has** watched some of that language.
+
+---
+
+## Phase 25 — Requested Button Scope + Dedup Confirmation (2026-03-15) ✅
+
+**Latest Release: v1.0.38**
+
+### Changes
+
+| Area | Fix |
+|------|-----|
+| Requested text size | `font-size: 10px` now scoped to `.discover-card:not(.upcoming-card) .btn-request.requested` — only applies when Request + Stream sit side-by-side in Recommended. Upcoming cards keep normal inherited font size |
+| Deduplication | Confirmed already per-section: `seenIds = new Set()` is local to each `renderTmdbCards()` call — duplicates between Upcoming and Recommended are allowed, duplicates within the same section are prevented |
 
