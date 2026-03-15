@@ -278,6 +278,54 @@ public class UserProfileService
             .ToList();
     }
 
+    /// <summary>
+    /// Computes time-decayed genre and language weights from the user's recent watch history.
+    /// Uses an exponential half-life of 90 days: a genre watched yesterday gets full weight (1.0),
+    /// 90 days ago gets ~50%, 180 days ago ~25%, 1 year ago ~8%.
+    ///
+    /// These are SEPARATE from the accumulated GenreWeights in the profile — they represent
+    /// the user's CURRENT interest snapshot and are used as a gentle recency nudge in scoring
+    /// (capped at ×1.5 multiplier so they influence but don't dominate the result).
+    ///
+    /// Design rationale: keeps "recent" signal independent from the main profile so that
+    /// the engine adapts to taste shifts (e.g. suddenly watching lots of Thrillers) without
+    /// permanently overwriting the long-term profile.
+    /// </summary>
+    /// <param name="profile">The user's profile to compute recency weights from.</param>
+    /// <param name="halfLifeDays">Days at which a watch contributes 50% of its initial weight.</param>
+    public (Dictionary<int, double> GenreRecency, Dictionary<string, double> LangRecency)
+        GetRecentInterestWeights(UserProfileData profile, double halfLifeDays = 90.0)
+    {
+        var genreRecency = new Dictionary<int, double>();
+        var langRecency  = new Dictionary<string, double>();
+
+        if (profile.RecentWatches.Count == 0)
+            return (genreRecency, langRecency);
+
+        var now = DateTime.UtcNow;
+        // k = ln(2) / halfLife → decay constant so that at t=halfLife, factor = 0.5
+        double k = Math.Log(2.0) / halfLifeDays;
+
+        foreach (var watch in profile.RecentWatches)
+        {
+            // Clamp to 0 in case of clock skew
+            double daysSince = Math.Max(0, (now - watch.WatchedAt).TotalDays);
+            double decayFactor = Math.Exp(-k * daysSince);
+
+            foreach (var genreId in watch.GenreIds)
+            {
+                genreRecency[genreId] = genreRecency.GetValueOrDefault(genreId) + decayFactor;
+            }
+
+            if (!string.IsNullOrWhiteSpace(watch.Language))
+            {
+                langRecency[watch.Language] = langRecency.GetValueOrDefault(watch.Language) + decayFactor;
+            }
+        }
+
+        return (genreRecency, langRecency);
+    }
+
     private static void DecayAllWeights(UserProfileData profile)
     {
         var genreKeys = profile.GenreWeights.Keys.ToList();

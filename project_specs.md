@@ -970,3 +970,44 @@ Watchlist seeds get +22 bonus (between +30 and +15) because watchlist intent is 
 | `Services/UserDataSavedConsumer.cs` | Added `/movie/{tmdbId}` TMDB fetch to get actual `original_language`; renamed method to `FetchDetailsAndUpdateAsync` |
 | `Api/TmdbController.cs` | Source 9: multi-language (top 2), threshold 0.5, vote_count 20, genre fallback at +15 |
 | `Web/discoverPage.js` | Infinite scroll: page cycle wraps instead of hiding button; button never hides |
+
+---
+
+## Phase 36 — Time-Decay Recency Scoring (2026-03-15) ✅
+
+**Release: v1.0.52**
+
+### Feature: Watch Recency Influences Recommendations
+
+**Goal:** Movies the user watched recently should carry more influence in the recommendation score than films watched months or years ago. The effect should be a gentle nudge, not dominant.
+
+**Implementation — `GetRecentInterestWeights()` in `UserProfileService`:**
+- Iterates over `RecentWatches` (last 200 events, stored with timestamps)
+- For each watch, computes `decayFactor = exp(-k × daysSince)` where `k = ln(2) / 90` (half-life = 90 days)
+  - Watched yesterday → factor = 1.0 (full contribution)
+  - Watched 90 days ago → factor = 0.5 (50%)
+  - Watched 180 days ago → factor = 0.25 (25%)
+  - Watched 1 year ago → factor ≈ 0.08 (8%)
+- Sums decayed factors per genre ID and language code
+- Returns `(genreRecency, langRecency)` dictionaries — independent from the main accumulated weights
+
+**Scoring injection in `TmdbController.GetRecommendations`:**
+- Called once before the `allScored` LINQ, stored as two dictionaries
+- Each dictionary is normalised by its max value so the effect is always relative to the user's most-recent interest
+- **Genre recency bonus:** `(recentGenre[gid] / maxGenreRecency) × 8.0` → up to +8 pts per matching genre
+- **Language recency bonus:** `(recentLang[lang] / maxLangRecency) × 5.0` → up to +5 pts per matching language
+
+**Scale context** (why it's gentle):
+- Vote average (quality): up to 70 pts
+- Source bonus (seed recs): up to 30 pts
+- Genre recency nudge: up to 8 pts per genre
+- Language recency nudge: up to 5 pts
+
+A film in a recently-watched genre can shift ~1–4 positions relative to a film in an old-watch genre of similar quality.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/UserProfileService.cs` | Added `GetRecentInterestWeights()` — exp(-k×days) decay over RecentWatches |
+| `Api/TmdbController.cs` | Calls `ProfileService.GetRecentInterestWeights(profile)` before scoring; adds recency bonus to genre (×8) and language (×5) scoring |

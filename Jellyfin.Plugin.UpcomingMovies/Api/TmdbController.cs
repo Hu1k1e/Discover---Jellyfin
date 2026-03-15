@@ -405,10 +405,26 @@ public class TmdbController : ControllerBase
             ).ConfigureAwait(false);
 
 
-            // ── Scoring engine ─────────────────────────────────────────────────────────────
+            // ── Scoring engine ──────────────────────────────────────────────────────────────
             // Genre weights are log-normalised via NW() to prevent a single repeated genre
             // from dominating all 60 output slots.
             var today = DateTime.UtcNow;
+
+            // ── Recency snapshot ──────────────────────────────────────────────────────────
+            // Compute time-decayed genre/language weights from the last 200 watch events.
+            // Half-life = 90 days: a genre watched yesterday contributes 1.0, 90 days ago 0.5,
+            // 180 days ago 0.25, 1 year ago ~0.08.
+            // These run ALONGSIDE the main log-normalized weights as a gentle nudge:
+            //   - recency can add at most +8 pts/genre and +5 pts/language to the score
+            //   - vs. quality (vote_average×7 = up to 70 pts) and source bonus (up to 30 pts)
+            // This means a recent genre preference can shift rank by ~1-3 positions, not dominate.
+            var (recentGenre, recentLang) = ProfileService?.GetRecentInterestWeights(profile)
+                ?? (new System.Collections.Generic.Dictionary<int, double>(),
+                    new System.Collections.Generic.Dictionary<string, double>());
+
+            // Max raw recency score across genres (used to normalise the bonus)
+            double maxGenreRecency = recentGenre.Count > 0 ? recentGenre.Values.Max() : 1.0;
+            double maxLangRecency  = recentLang.Count  > 0 ? recentLang.Values.Max()  : 1.0;
 
             // Determine the single highest-weight genre so we can spread secondary genres
             var topGenreId = profile.GenreWeights.Count > 0
@@ -426,6 +442,7 @@ public class TmdbController : ControllerBase
                 // Genre match — log-normalised weight × 2.0 per matching genre
                 // This means a user who watched 10 animated movies only scores ~2× more
                 // for genre than someone who watched 1, preventing total genre dominance.
+                // Recency bonus: adds up to +8 pts for a genre watched very recently.
                 bool hasTopGenre = false;
                 if (m.TryGetProperty("genre_ids", out var genreArr))
                 {
@@ -434,16 +451,23 @@ public class TmdbController : ControllerBase
                         if (g.TryGetInt32(out var gid))
                         {
                             score += NW(profile.GenreWeights.GetValueOrDefault(gid)) * 2.0;
+                            // Recency nudge: 0→8 pts based on how recently this genre was watched
+                            // Normalised so the top recent genre always contributes 8 pts max
+                            if (recentGenre.TryGetValue(gid, out var gr))
+                                score += (gr / maxGenreRecency) * 8.0;
                             if (gid == topGenreId) hasTopGenre = true;
                         }
                     }
                 }
 
                 // Language affinity — log-normalised × 6.0
+                // Recency bonus: up to +5 pts if the user has watched this language very recently
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
                     score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 6.0;
+                    if (recentLang.TryGetValue(lang, out var lr))
+                        score += (lr / maxLangRecency) * 5.0;
                 }
 
                 // Vote average (0–10 → 0–70 pts) — core quality signal
