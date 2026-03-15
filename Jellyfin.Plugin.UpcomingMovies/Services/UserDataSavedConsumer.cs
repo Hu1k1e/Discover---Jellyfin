@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Entities;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.UpcomingMovies.Services;
@@ -16,9 +17,9 @@ namespace Jellyfin.Plugin.UpcomingMovies.Services;
 /// <summary>
 /// Listens for Jellyfin UserDataSaved events and updates the user's taste profile
 /// automatically whenever a movie is played or marked as watched.
-/// Uses IServerEntryPoint so it runs for the lifetime of the server.
+/// Implements IHostedService (IServerEntryPoint was removed in Jellyfin 10.10+).
 /// </summary>
-public class UserDataSavedConsumer : IServerEntryPoint
+public class UserDataSavedConsumer : IHostedService, IDisposable
 {
     private readonly IUserDataManager _userDataManager;
     private readonly ILibraryManager _libraryManager;
@@ -42,10 +43,16 @@ public class UserDataSavedConsumer : IServerEntryPoint
         _logger = logger;
     }
 
-    public Task RunAsync()
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         _userDataManager.UserDataSaved += OnUserDataSaved;
         _logger.LogInformation("[UpcomingMovies] UserDataSaved listener registered — profiles will auto-update on movie watch.");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        _userDataManager.UserDataSaved -= OnUserDataSaved;
         return Task.CompletedTask;
     }
 

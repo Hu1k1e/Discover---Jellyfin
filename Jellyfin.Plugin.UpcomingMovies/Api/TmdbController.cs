@@ -198,7 +198,7 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] genre discover failed"); }
             });
 
-            // ── Source 4: Director-based discover (+50 — strongest taste signal) ──────────
+            // ── Source 4: Director-based discover (+25) ──────────────────────────────────
             var directorTask = Task.Run(async () =>
             {
                 if (topDirs.Count == 0) return;
@@ -212,12 +212,12 @@ public class TmdbController : ControllerBase
                     using var doc = JsonDocument.Parse(json);
                     if (doc.RootElement.TryGetProperty("results", out var results))
                         foreach (var m in results.EnumerateArray())
-                            AddCandidate(m, 50.0);
+                            AddCandidate(m, 25.0);
                 }
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] director discover failed"); }
             });
 
-            // ── Source 5: Actor-based discover (+40) ────────────────────────────────────
+            // ── Source 5: Actor-based discover (+20) ────────────────────────────────────
             var actorTask = Task.Run(async () =>
             {
                 if (topActors.Count == 0) return;
@@ -231,7 +231,7 @@ public class TmdbController : ControllerBase
                     using var doc = JsonDocument.Parse(json);
                     if (doc.RootElement.TryGetProperty("results", out var results))
                         foreach (var m in results.EnumerateArray())
-                            AddCandidate(m, 40.0);
+                            AddCandidate(m, 20.0);
                 }
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] actor discover failed"); }
             });
@@ -275,13 +275,13 @@ public class TmdbController : ControllerBase
                 // Start with source bonus (director/actor/seed sourcing)
                 double score = candidateSourceBonus.GetValueOrDefault(movieId);
 
-                // Genre weights (HIGHEST factor) — each matching genre contributes profile weight × 8
+                // Genre match (× 2.0 — meaningful but lets other factors contribute too)
                 if (m.TryGetProperty("genre_ids", out var genreArr))
                 {
                     foreach (var g in genreArr.EnumerateArray())
                     {
                         if (g.TryGetInt32(out var gid))
-                            score += profile.GenreWeights.GetValueOrDefault(gid) * 8.0;
+                            score += profile.GenreWeights.GetValueOrDefault(gid) * 2.0;
                     }
                 }
 
@@ -292,20 +292,20 @@ public class TmdbController : ControllerBase
                     score += profile.LanguageWeights.GetValueOrDefault(lang) * 2.0;
                 }
 
-                // Vote average quality signal (0–10 → 0–40 pts)
+                // Vote average (0–10 → 0–60 pts) — strong quality signal
                 if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out var va))
-                    score += va * 4.0;
+                    score += va * 6.0;
 
-                // Popularity (capped at 100)
+                // Popularity (capped at 100 → max 50 pts) — reflects cultural relevance
                 if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out var pop))
-                    score += Math.Min(pop, 100) * 0.3;
+                    score += Math.Min(pop, 100) * 0.5;
 
-                // Recency bonus/penalty
+                // Recency bonus/penalty (gentle — recent is preferred but old classics still show)
                 if (m.TryGetProperty("release_date", out var rdProp) &&
                     DateTime.TryParse(rdProp.GetString(), out var releaseDate))
                 {
                     var yearsOld = (today - releaseDate).TotalDays / 365.25;
-                    if (yearsOld <= 2) score += 15;
+                    if (yearsOld <= 2) score += 12;
                     else if (yearsOld > 10) score -= 8;
                 }
 

@@ -1,7 +1,6 @@
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
-using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.UpcomingMovies;
@@ -17,7 +16,7 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         // Singleton profile service — one instance for the server lifetime, manages all user profiles
         serviceCollection.AddSingleton<UserProfileService>();
 
-        // IServerEntryPoint — Jellyfin auto-starts these and wires them into the DI lifetime
-        serviceCollection.AddScoped<IServerEntryPoint, UserDataSavedConsumer>();
+        // IHostedService replaces IServerEntryPoint (removed in Jellyfin 10.10+)
+        serviceCollection.AddHostedService<UserDataSavedConsumer>();
     }
 }
