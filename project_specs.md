@@ -240,7 +240,63 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Movie detail popup not appearing on card click | `showOverviewModal` crashed immediately with `ReferenceError: tmdbId is not defined` — the function referenced bare `tmdbId` instead of `opts.tmdbId` on line 760. This silently killed the entire modal. | Changed to `window._jellyseerrRequests.has(String(opts.tmdbId))` |
 | Request button inside popup did nothing | No click handler was wired for `.btn-request` inside the overview modal HTML. | Added `modalReqBtn.addEventListener('click', ...)` that closes the overview modal and opens `openRequestModal()` correctly. |
 
-**Latest Release: v1.0.27** — Phase 20 completed (movie detail popup restored).
+---
+
+## Phase 21 — Intelligent Per-User Recommendation Engine (2026-03-15) ✅
+
+### Architecture
+Event-driven profile system with no polling. Fully server-side — profiles are never accessible from the browser.
+
+```
+[User watches a movie in Jellyfin]
+       ↓
+UserDataSavedConsumer fires automatically (IServerEntryPoint + IUserDataManager.UserDataSaved)
+       ↓
+Fetches director/actor TMDB person IDs (from Jellyfin metadata or TMDB credits API fallback)
+       ↓
+UserProfileService.UpdateWithWatch() applies exponential decay (×0.92) to all existing weights,
+then adds new signal: genre ×1, language ×1, actor ×1, director ×2 (recency-weighted)
+       ↓
+Profile saved as {userId}.json in Jellyfin data folder (server-side only, named by GUID)
+       ↓
+[User opens Discover page]
+       ↓
+Frontend sends userId → GET /UpcomingMovies/tmdb/recommendations?userId=...
+       ↓
+TmdbController loads profile, runs 6 TMDB sources in parallel, scores all candidates
+       ↓
+Returns top 60, sorted by score (highest first)
+```
+
+### New Files
+| File | Purpose |
+|------|---------|
+| `Model/UserProfileData.cs` | Profile schema: genre/director/actor/language weights + watch history (last 200 entries) |
+| `Services/UserProfileService.cs` | Read/write JSON profiles; exponential decay on update; top-N helpers |
+| `Services/UserDataSavedConsumer.cs` | Jellyfin event consumer — auto-updates profile on movie play/mark-watched |
+| `PluginServiceRegistrator.cs` | Registers UserProfileService as DI singleton, UserDataSavedConsumer as IServerEntryPoint |
+
+### Scoring Formula (applied per TMDB candidate)
+| Factor | Points |
+|--------|--------|
+| Movie sourced from favourite director discover | +50 source bonus |
+| Movie sourced from favourite actor discover | +40 source bonus |
+| Movie sourced from /recommendations of seed | +30 source bonus |
+| Movie sourced from /similar of seed | +15 source bonus |
+| Genre match (per matching genre × profile weight) | `weight × 1.5` |
+| Language affinity | `weight × 2.0` |
+| Vote average (0–10) | `va × 5` |
+| Popularity (capped at 100) | `pop × 0.3` |
+| Release date ≤ 2 years ago | +20 |
+| Release date > 10 years ago | −10 |
+
+### Frontend Change
+`fetchRecommendations` reduced from ~80 lines (3 Jellyfin API calls + sessionStorage juggling) to 12 lines — sends `userId` only, gets back pre-scored sorted list.
+
+### Debug Endpoint
+`GET /UpcomingMovies/tmdb/profile?userId=xxx` — returns current weights, top genres/directors/actors/languages for admin inspection.
+
+**Latest Release: v1.0.28** — Phase 21 completed (intelligent per-user recommendation engine).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
