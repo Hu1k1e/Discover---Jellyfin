@@ -628,4 +628,39 @@ public class TmdbController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
+
+    // ── Watchlist Fulfillment ───────────────────────────────────────────────────
+    // Called by Jellyseerr webhook (or manually) when a requested movie becomes
+    // available in Jellyfin.  Adds the movie to the watchlists of all users who
+    // had requested it via the Request button on the Discover page.
+    //
+    // Jellyseerr webhook setup:
+    //   URL:  https://your-jellyfin/UpcomingMovies/tmdb/watchlist/fulfill
+    //   Body: { "tmdbId": 12345, "jellyfinItemId": "abc123..." }
+    //   Send on: media.available
+    /// <summary>
+    /// Fulfils pending watchlist entries for a movie that has just become available.
+    /// Intended to be called by a Jellyseerr "media.available" webhook.
+    /// </summary>
+    [HttpPost("watchlist/fulfill")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> FulfillWatchlist(
+        [FromQuery] int tmdbId,
+        [FromQuery] string jellyfinItemId = "")
+    {
+        if (tmdbId <= 0)
+            return BadRequest(new { error = "tmdbId is required" });
+        if (string.IsNullOrWhiteSpace(jellyfinItemId))
+            return BadRequest(new { error = "jellyfinItemId is required" });
+
+        var consumer = Plugin.WatchlistConsumer;
+        if (consumer is null)
+            return StatusCode(503, new { error = "WatchlistConsumer not yet initialised" });
+
+        await consumer.FulfillAsync(tmdbId, jellyfinItemId).ConfigureAwait(false);
+        return Ok(new { message = $"Watchlist fulfilled for tmdbId={tmdbId}" });
+    }
 }
+
