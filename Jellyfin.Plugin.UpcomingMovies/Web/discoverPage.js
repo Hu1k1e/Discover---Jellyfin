@@ -164,16 +164,21 @@
             }
             .discover-card.hover-enabled:hover .dc-overlay { opacity: 1; }
 
-            .dc-play-btn {
-                width: 48px; height: 48px; border-radius: 50%;
-                border: 2px solid rgba(255,255,255,0.85);
-                background: rgba(255,255,255,0.12);
+            /* ── Jellyfin-style animated play button ── */
+            .dc-jellyfin-play-btn {
+                width: 52px; height: 52px; border-radius: 50%;
+                background: rgba(255,255,255,0.15);
+                border: 2px solid rgba(255,255,255,0.9);
                 display: flex; align-items: center; justify-content: center;
-                pointer-events: none;
+                cursor: pointer; pointer-events: auto;
+                transition: background 0.18s ease, transform 0.18s ease;
+                color: #fff;
             }
-            .dc-play-btn svg { width: 22px; height: 22px; fill: #fff; margin-left: 3px; }
+            .dc-jellyfin-play-btn:hover { background: rgba(255,255,255,0.30); transform: scale(1.12); }
+            .dc-jellyfin-play-btn:active { transform: scale(0.95); }
+            .dc-jellyfin-play-btn .material-icons { font-size: 30px; user-select: none; }
             /* Hide play button for upcoming cards */
-            .discover-card.upcoming-card .dc-play-btn { display: none; }
+            .discover-card.upcoming-card .dc-jellyfin-play-btn { display: none; }
 
             /* ── Card meta (Title below poster) ── */
             .dc-title {
@@ -185,13 +190,16 @@
 
             /* ── Button Bar (Below Title) ── */
             .dc-action-bar {
-                display: flex; flex-direction: row; gap: 8px;
-                margin-top: auto; padding: 12px 6px 6px 6px;
+                display: flex; flex-direction: row; gap: 5px;
+                margin-top: auto; padding: 10px 5px 5px 5px;
             }
             .dc-action-bar button, .dc-action-bar a {
-                flex: 1; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; padding: 8px; font-size: 13px;
-                text-align: center; text-decoration: none; transition: transform 0.2s, background 0.2s, opacity 0.2s; box-sizing: border-box;
-                background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e0e0e0; backdrop-filter: blur(4px);
+                flex: 1; min-width: 0; border-radius: 6px; font-weight: 600; cursor: pointer; border: none;
+                padding: 7px 4px; font-size: 12px;
+                text-align: center; text-decoration: none; transition: transform 0.2s, background 0.2s, opacity 0.2s;
+                box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+                color: #e0e0e0; backdrop-filter: blur(4px);
             }
             .dc-action-bar button:hover, .dc-action-bar a:hover { transform: translateY(-2px); color: #fff; }
             .dc-action-bar button:disabled { opacity: 1 !important; transform: none !important; cursor: default; }
@@ -652,6 +660,7 @@
     var SETUP_HTML = '<div class="discover-error">'
         + '&#9888;&#65039; <strong>TMDB API key not configured.</strong><br>'
         + 'Go to <strong>Dashboard &rarr; Plugins &rarr; Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>'
+        + '</div>';
     // ──── OVERVIEW MODAL ────
 
     function showOverviewModal(opts) {
@@ -815,9 +824,12 @@
 
         if (!isUpcoming) {
             if (isAvailable && jellyfinId) {
-                // Play button to keep height uniform
+                // Play button (action bar) + Jellyfin-style animated overlay button
                 actionsHtml += '<button class="btn-play" data-jellyfin="' + jellyfinId + '">Play</button>';
-                playHtml = '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>';
+                playHtml = '<div class="dc-overlay">'
+                    + '<button is="emby-button" type="button" class="dc-jellyfin-play-btn" tabindex="-1" aria-label="Play">'
+                    + '<span class="material-icons">play_circle</span>'
+                    + '</button></div>';
             } else if (tmdbId) {
                 var alreadyReq = window._jellyseerrRequests && window._jellyseerrRequests.has(String(tmdbId));
                 if (alreadyReq) {
@@ -900,6 +912,15 @@
             if (!isAppend) containerEl.innerHTML = '<div class="discover-loading">No items found.</div>';
             return;
         }
+        // Deduplicate by TMDB ID on the frontend — guards against parallel-source overlap
+        var seenIds = new Set();
+        movies = movies.filter(function(m) {
+            if (!m || !m.id) return false;
+            var id = String(m.id);
+            if (seenIds.has(id)) return false;
+            seenIds.add(id);
+            return true;
+        });
         movies.forEach(function(movie) {
             var posterUrl   = movie.poster_path   ? TMDB_IMAGE_BASE + movie.poster_path   : null;
             var backdropUrl = movie.backdrop_path ? 'https://image.tmdb.org/t/p/w780' + movie.backdrop_path : null;
