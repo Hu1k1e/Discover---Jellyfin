@@ -138,6 +138,18 @@ public class TmdbController : ControllerBase
             {
                 if (!movie.TryGetProperty("id", out var idProp) || !idProp.TryGetInt32(out var movieId)) return;
                 if (watchedIds.Contains(movieId)) return;
+
+                // Language allowlist: only surface languages the user cares about
+                // en=Hollywood, hi=Hindi, ta=Tamil, ml=Malayalam, te=Telugu, ko=Korean, ja=Japanese/Anime
+                if (movie.TryGetProperty("original_language", out var langEl))
+                {
+                    var lang = langEl.GetString();
+                    if (!string.IsNullOrEmpty(lang) &&
+                        lang != "en" && lang != "hi" && lang != "ta" &&
+                        lang != "ml" && lang != "te" && lang != "ko" && lang != "ja")
+                        return;
+                }
+
                 lock (lock_)
                 {
                     if (!candidateElements.ContainsKey(movieId))
