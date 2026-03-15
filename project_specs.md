@@ -1193,4 +1193,21 @@ Selecting Malayalam/Hindi filter returned only 2 movies. Root cause: filter lang
 | `Api/TmdbController.cs` | Pre-parse filter params; Source 10 added |
 | `Web/discoverPage.js` | Button order; Recommended filter wrapper alignment |
 
+---
+
+## Phase 45 — Grid Right-Side Gap Fix (v1.0.61)
+
+### Problem
+Changing `.discover-grid` to `repeat(auto-fill, 150px)` (Phase 43) caused visible empty space at the right edge. `auto-fill` keeps empty column tracks; `auto-fit` collapses them.
+
+### Fix
+Reverted to `repeat(auto-fit, minmax(150px, 1fr))`. With 15+ cards, `1fr` ≈ 160–175px (imperceptible). The huge-card issue is no longer a risk since `ensureRecommendationsBuffer` guarantees 3 full rows.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Grid CSS: `auto-fill 150px` → `auto-fit minmax(150px, 1fr)` |
+
+
 
