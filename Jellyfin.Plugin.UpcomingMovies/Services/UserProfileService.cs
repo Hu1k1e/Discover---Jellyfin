@@ -215,6 +215,69 @@ public class UserProfileService
             .Take(n)
             .ToList();
 
+    /// <summary>
+    /// Called when a user adds a movie to their watchlist (UserData.Likes = true).
+    /// Applies the same profile signals as UpdateWithWatch but at 50% weight.
+    /// Rationale: watchlisting signals clear genre/director/actor intent without the
+    /// confirmation of completion that a full watch provides.
+    /// </summary>
+    public void UpdateWithWatchlist(
+        string userId,
+        int tmdbId,
+        IEnumerable<int> genreIds,
+        string language,
+        IEnumerable<int> directorTmdbIds,
+        IEnumerable<int> actorTmdbIds)
+    {
+        var profile = GetProfile(userId);
+
+        // Track watchlisted TMDB IDs (newest first, capped at 100)
+        profile.WatchlistTmdbIds.Remove(tmdbId);
+        profile.WatchlistTmdbIds.Insert(0, tmdbId);
+        if (profile.WatchlistTmdbIds.Count > 100)
+            profile.WatchlistTmdbIds.RemoveRange(100, profile.WatchlistTmdbIds.Count - 100);
+
+        // 50% of base watch weight — intent signal is weaker than completion
+        const double wlWeight = BaseWatchWeight * 0.5;
+
+        var gList = genreIds.ToList();
+        var dList = directorTmdbIds.ToList();
+        var aList = actorTmdbIds.ToList();
+
+        // Additive only — no decay so watchlist events don't erode existing taste profile
+        foreach (var g in gList)
+            profile.GenreWeights[g] = profile.GenreWeights.GetValueOrDefault(g) + wlWeight;
+
+        if (!string.IsNullOrWhiteSpace(language))
+            profile.LanguageWeights[language] = profile.LanguageWeights.GetValueOrDefault(language) + wlWeight;
+
+        foreach (var d in dList)
+            profile.DirectorWeights[d] = profile.DirectorWeights.GetValueOrDefault(d) + (wlWeight * 2);
+
+        foreach (var a in aList.Take(5))
+            profile.ActorWeights[a] = profile.ActorWeights.GetValueOrDefault(a) + wlWeight;
+
+        SaveProfile(profile);
+
+        _logger.LogInformation(
+            "[UpcomingMovies] Watchlist signal for user {UserId}: TMDB {TmdbId} (genres:{Genres})",
+            userId, tmdbId, string.Join(",", gList));
+    }
+
+    /// <summary>
+    /// Returns up to N most recently watchlisted TMDB IDs for use as recommendation seeds.
+    /// Excludes items already in the watch history.
+    /// </summary>
+    public List<int> GetWatchlistSeedIds(UserProfileData profile, int n = 5)
+    {
+        var watchedSet = new HashSet<int>(profile.WatchedTmdbIds);
+        return profile.WatchlistTmdbIds
+            .Where(id => id > 0 && !watchedSet.Contains(id))
+            .Distinct()
+            .Take(n)
+            .ToList();
+    }
+
     private static void DecayAllWeights(UserProfileData profile)
     {
         var genreKeys = profile.GenreWeights.Keys.ToList();

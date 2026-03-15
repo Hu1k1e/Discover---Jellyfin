@@ -856,3 +856,40 @@ req.Headers.TryAddWithoutValidation("Authorization", $"MediaBrowser Token=\"{api
 |------|--------|
 | `Web/discoverPage.js` | `renderTmdbCards()`: added `isWatchlisted: !!movie.isWatchlisted` to `buildCard()` call |
 | `Services/LibraryItemAddedConsumer.cs` | Fixed endpoint from `/UserWatchlistItems/` → `/Users/{uid}/Items/{id}/Rating?Likes=true`; fixed header from `X-Emby-Token` → `Authorization: MediaBrowser Token="<key>"` |
+
+---
+
+## Phase 33 — Watchlist Signals in Recommendation Engine (2026-03-15) ✅
+
+**Release: v1.0.49**
+
+### Goal
+Use each user's watchlist (items where `UserData.Likes = true`) as additional input signals for both **profile building** (genre/director/actor weights) and **candidate seeding** in the recommendation engine.
+
+### Design Decisions
+
+| Signal | Weight | Decay | Rationale |
+|--------|--------|-------|-----------|
+| Watched (Played=true) | 1.0× BaseWatchWeight (5.0) | Yes (0.92 factor) | Strongest signal — user completed the film |
+| Watchlisted (Likes=true) | 0.5× BaseWatchWeight (2.5) | No | Intent signal — user wants to watch; weaker but meaningful |
+
+Watchlist events are **additive only** (no decay) so they don't erode existing taste weights from watch history.
+
+### TMDB Recommendation Seeds
+
+| Source | Seed Set | Bonus | N |
+|--------|----------|-------|---|
+| Source 1 | Recent watched IDs → `/recommendations` | +30 | 8 |
+| **Source 8** | **Recent watchlist IDs → `/recommendations`** | **+22** | **5** |
+| Source 2 | Top 3 watched IDs → `/similar` | +15 | 3 |
+
+Watchlist seeds get +22 bonus (between +30 and +15) because watchlist intent is confident but unconfirmed.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Model/UserProfileData.cs` | Added `WatchlistTmdbIds: List<int>` — stores up to 100 watchlisted TMDB IDs |
+| `Services/UserProfileService.cs` | Added `UpdateWithWatchlist()` (0.5× weight, no decay) and `GetWatchlistSeedIds()` (returns unwatched watchlist items) |
+| `Services/UserDataSavedConsumer.cs` | Rewrote `OnUserDataSaved` to handle both `Played=true` (full signal) and `Likes=true` (watchlist signal); both paths share the same TMDB credits fetch |
+| `Api/TmdbController.cs` | Added `wlSeedIds` extraction; added Source 8 (watchlist `/recommendations` at +22); updated `hasProfile` to also be `true` when user has watchlist items (unlocks personalised sources for new users who only watchlisted) |

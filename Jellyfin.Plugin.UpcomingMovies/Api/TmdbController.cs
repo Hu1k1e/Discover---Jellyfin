@@ -132,11 +132,12 @@ public class TmdbController : ControllerBase
                 : svc.GetProfile(userId);
 
             var watchedIds  = new HashSet<int>(profile.WatchedTmdbIds);
-            var seedIds     = svc?.GetRecentSeedIds(profile, 8)  ?? new List<int>();
-            var topGenres   = svc?.GetTopGenres(profile, 5)      ?? new List<int>();
-            var topDirs     = svc?.GetTopDirectors(profile, 5)   ?? new List<int>();
-            var topActors   = svc?.GetTopActors(profile, 5)      ?? new List<int>();
-            bool hasProfile = profile.TotalWatched > 0;
+            var seedIds     = svc?.GetRecentSeedIds(profile, 8)   ?? new List<int>();
+            var wlSeedIds   = svc?.GetWatchlistSeedIds(profile, 5) ?? new List<int>();
+            var topGenres   = svc?.GetTopGenres(profile, 5)       ?? new List<int>();
+            var topDirs     = svc?.GetTopDirectors(profile, 5)    ?? new List<int>();
+            var topActors   = svc?.GetTopActors(profile, 5)       ?? new List<int>();
+            bool hasProfile = profile.TotalWatched > 0 || wlSeedIds.Count > 0;
 
             var client = _httpClientFactory.CreateClient();
 
@@ -300,10 +301,31 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] popular source failed"); }
             });
 
+            // ── Source 8: Watchlist seeds — /recommendations from watchlisted movies (+22) ────
+            // Users who add movies to their watchlist express strong genre/director/actor intent.
+            // We seed from those movies at +22 (between watched-seed /rec +30 and /similar +15)
+            // because watchlist intent is confident but weaker than "actually watched and enjoyed".
+            var wlSeedTasks = wlSeedIds.Select(async wlId =>
+            {
+                try
+                {
+                    var url = $"{TmdbBaseUrl}/movie/{wlId}/recommendations?api_key={apiKey}&language=en-US&page=1";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 22.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] wl-seed recommendations/{Id} failed", wlId); }
+            });
+
             // Run all sources in parallel for speed
             await Task.WhenAll(
                 Task.WhenAll(seedTasks),
                 Task.WhenAll(simTasks),
+                Task.WhenAll(wlSeedTasks),
                 genreTask,
                 directorTask,
                 actorTask,
