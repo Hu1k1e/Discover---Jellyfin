@@ -1165,4 +1165,32 @@ Re-applied the two closing braces with comments:
 | File | Change |
 |------|--------|
 | `Web/discoverPage.js` | Grid CSS, label text, header alignment, Reset wiring, Apply wiring (all 5 fixes) |
+
+---
+
+## Phase 44 — Language Filter Deep Candidate Pool + UI Layout (v1.0.60)
+
+### Problem
+Selecting Malayalam/Hindi filter returned only 2 movies. Root cause: filter languages were a post-filter on a pool sourced from English watch seeds — not enough regional movies.
+
+### Backend Fix — Source 10 (`TmdbController.cs`)
+- Filter params (`fLangSet`, `fGenreSet`, `fDateFrom`, `fDateTo`) now parsed **before** source gathering
+- **Source 10**: when `filterLanguages` is set, fires 2 parallel TMDB discover calls per language:
+  - `sort_by=vote_average.desc&vote_count.gte=50` — rotates page `((page-1)%20)+1`
+  - `sort_by=popularity.desc&vote_count.gte=20` — rotates page `(page%20)+1`
+  - Both use `bypassLangFilter=true`, source bonus 25/22
+  - 20-page rotation keeps Discover More returning fresh results
+- Source 10 runs in the main `Task.WhenAll` alongside all other sources
+
+### Frontend Fix (`discoverPage.js`)
+- **Refresh before Filters** — Upcoming order now: `[⟳] [Filters ▾]`
+- **Same indentation** — Recommended filter button now in same flex wrapper `margin-right:4%` as Upcoming
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Pre-parse filter params; Source 10 added |
+| `Web/discoverPage.js` | Button order; Recommended filter wrapper alignment |
+
 

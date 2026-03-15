@@ -203,6 +203,16 @@ public class TmdbController : ControllerBase
             var topActors   = svc?.GetTopActors(profile, 5)       ?? new List<int>();
             bool hasProfile = profile.TotalWatched > 0 || wlSeedIds.Count > 0;
 
+            // Pre-parse filter params (needed by Source 10 candidate gathering AND post-filter step)
+            var fLangSet = (filterLanguages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
+            var fGenreSet = (filterGenres ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim()).Where(s => int.TryParse(s, out _))
+                            .Select(s => int.Parse(s)).ToHashSet();
+            DateTime? fDateFrom = null, fDateTo = null;
+            if (!string.IsNullOrWhiteSpace(filterDateFrom) && DateTime.TryParse(filterDateFrom, out var fdf)) fDateFrom = fdf;
+            if (!string.IsNullOrWhiteSpace(filterDateTo)   && DateTime.TryParse(filterDateTo,   out var fdt)) fDateTo   = fdt;
+
             var client = _httpClientFactory.CreateClient();
 
             // Thread-safe accumulation of candidates
@@ -455,12 +465,61 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] lang-affinity ({Lang}) failed", langCode); }
             });
 
+            // ── Source 10: explicit filter-language TMDB discover ─────────────────────────
+            // Activated ONLY when filterLanguages is specified in the UI filter panel.
+            // Fetches TMDB discover results for each selected language so the candidate pool
+            // is rich enough to fill 3 rows even if the user has no watch history in that language.
+            // Uses two TMDB pages per language (vote_average sort + popularity sort) and rotates
+            // through 20 backend pages so Discover More keeps returning fresh results.
+            var filterLangTasks = fLangSet.SelectMany(langCode => new[]
+            {
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var tmdbPg = ((page - 1) % 20) + 1;
+                        var url1 = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
+                                 + $"&with_original_language={langCode}"
+                                 + $"&sort_by=vote_average.desc&vote_count.gte=50&page={tmdbPg}";
+                        var r1 = await client.GetAsync(url1).ConfigureAwait(false);
+                        if (r1.IsSuccessStatusCode)
+                        {
+                            using var d1 = JsonDocument.Parse(await r1.Content.ReadAsStringAsync().ConfigureAwait(false));
+                            if (d1.RootElement.TryGetProperty("results", out var res1))
+                                foreach (var m in res1.EnumerateArray())
+                                    AddCandidate(m, 25.0, bypassLangFilter: true);
+                        }
+                    }
+                    catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] filter-lang({Lang}) vote_avg failed", langCode); }
+                }),
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        var tmdbPg2 = ((page) % 20) + 1; // offset so it returns different page than vote_avg query
+                        var url2 = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
+                                 + $"&with_original_language={langCode}"
+                                 + $"&sort_by=popularity.desc&vote_count.gte=20&page={tmdbPg2}";
+                        var r2 = await client.GetAsync(url2).ConfigureAwait(false);
+                        if (r2.IsSuccessStatusCode)
+                        {
+                            using var d2 = JsonDocument.Parse(await r2.Content.ReadAsStringAsync().ConfigureAwait(false));
+                            if (d2.RootElement.TryGetProperty("results", out var res2))
+                                foreach (var m in res2.EnumerateArray())
+                                    AddCandidate(m, 22.0, bypassLangFilter: true);
+                        }
+                    }
+                    catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] filter-lang({Lang}) popular failed", langCode); }
+                })
+            }).ToList();
+
             // Run all sources in parallel for speed
             await Task.WhenAll(
                 Task.WhenAll(seedTasks),
                 Task.WhenAll(simTasks),
                 Task.WhenAll(wlSeedTasks),
                 Task.WhenAll(langTasks),
+                Task.WhenAll(filterLangTasks),  // Source 10: filter-language explicit discover
                 genreTask,
                 directorTask,
                 actorTask,
@@ -558,18 +617,7 @@ public class TmdbController : ControllerBase
             .OrderByDescending(x => x.score)
             .ToList();
 
-            // ── Post-filters (applied after scoring so profile weights still rank results) ──
-            // filterLanguages: comma-sep ISO codes  e.g. "hi,ml" → only show those languages
-            // filterGenres:    comma-sep TMDB genre IDs e.g. "28,18" → movie must share ≥1 genre
-            // filterDateFrom/To: yyyy-MM-dd → filter by release_date range
-            var fLangSet = (filterLanguages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
-                            .Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
-            var fGenreSet = (filterGenres ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
-                            .Select(s => s.Trim()).Where(s => int.TryParse(s, out _))
-                            .Select(s => int.Parse(s)).ToHashSet();
-            DateTime? fDateFrom = null, fDateTo = null;
-            if (!string.IsNullOrWhiteSpace(filterDateFrom) && DateTime.TryParse(filterDateFrom, out var fdf)) fDateFrom = fdf;
-            if (!string.IsNullOrWhiteSpace(filterDateTo)   && DateTime.TryParse(filterDateTo,   out var fdt)) fDateTo   = fdt;
+            // ── Post-filters (fLangSet/fGenreSet/fDateFrom/fDateTo already parsed above) ──
 
             if (fLangSet.Count > 0 || fGenreSet.Count > 0 || fDateFrom.HasValue || fDateTo.HasValue)
             {

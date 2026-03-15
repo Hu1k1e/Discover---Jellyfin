@@ -561,7 +561,7 @@
                 + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left" style="margin:0;">'
                 +   title
                 + '</h2>'
-                + filterBtn
+                + '<div style="display:flex;gap:8px;align-items:center;margin-right:4%;">' + filterBtn + '</div>'
                 + '</div>'
                 + buildFilterPanelHtml(id)
                 + '<div class="discover-grid padded-left padded-right" data-row="' + id + '">'
@@ -570,13 +570,13 @@
                 + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color:#fff; display:none; padding:12px 24px; border-radius:8px; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.2s;" onmouseover="this.style.background=\'#00C853\'" onmouseout="this.style.background=\'rgba(255,255,255,0.08)\'">Discover More</button></div>'
                 + '</div>';
         }
-        var refreshBtn = '<button is="emby-button" class="emby-button paper-icon-button-light" style="color:#aaa; font-size:1.1em; padding:8px; margin-right:4%;" title="Refresh Upcoming" data-action="refresh-upcoming"><i class="material-icons">refresh</i></button>';
+        var refreshBtn = '<button is="emby-button" class="emby-button paper-icon-button-light" style="color:#aaa; font-size:1.1em; padding:8px;" title="Refresh Upcoming" data-action="refresh-upcoming"><i class="material-icons">refresh</i></button>';
         return '<div class="discover-section" data-section="' + id + '">'
             + '<div style="' + SECTION_HEADER_STYLE + '">'
             + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left" style="margin:0;">'
             +   title
             + '</h2>'
-            + '<div style="display:flex;gap:8px;align-items:center;margin-right:4%;">' + filterBtn + refreshBtn + '</div>'
+            + '<div style="display:flex;gap:8px;align-items:center;margin-right:4%;">' + refreshBtn + filterBtn + '</div>'
             + '</div>'
             + buildFilterPanelHtml(id)
             + '<div class="discover-row-wrap">'
