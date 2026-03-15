@@ -463,4 +463,21 @@ The following Jellyfin types moved to `Jellyfin.Data.Enums` or were removed from
 **Pending user actions:**
 - Verify TMDB API key is saved in plugin settings
 - Verify Jellyseerr URL + API key are saved
-- Test Request modal (Destination Server / Quality Profile / Root Folder dropdowns)
+- Test Request modal (Destination Server / Quality Profile / Root Folder dropdowns)
+
+---
+
+## Phase 22 — Card UI Fixes + Recommendation Quality (2026-03-15) ✅
+
+**Latest Release: v1.0.35**
+
+### Changes
+
+| Area | Issue | Fix |
+|------|-------|-----|
+| Card buttons | "✓ Requested" text overflowed card width | `font-size:12px`, `padding:7px 4px`, `min-width:0`, `white-space:nowrap; overflow:hidden; text-overflow:ellipsis` on `.dc-action-bar button` |
+| Play button | Static white SVG circle on available movies | Replaced with `<button is="emby-button">` + `<span class="material-icons">play_circle</span>` — gets Jellyfin's native ripple animation. Hover: `scale(1.12)`, Active: `scale(0.95)` |
+| Recommendation scoring | New movies dominated (recency +12/-8) | Reduced to `+4` for ≤2yr old, `-3` for >10yr old — older classics now surface via quality (vote_avg ×6.0) |
+| Duplicate cards | Same movie could appear twice from parallel TMDB sources | Frontend `Set`-based dedup in `renderTmdbCards` — filters already-seen TMDB IDs before rendering |
+| Bug: `ObjectDisposedException` | `JsonDocument` disposed while scoring LINQ accessed elements | `movie.Clone()` in `AddCandidate()` — independent copy survives `using var doc` scope (v1.0.34) |
+
