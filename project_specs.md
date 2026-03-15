@@ -157,11 +157,20 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Watched Filter | Modified the Jellyfin `Items` API query in `discoverPage.js` to retrieve `UserData`. The recommendation array is now strictly filtered so `item.UserData.Played === true` items are completely hidden from the user's Discover page. |
 | Native Content Navigator | Completely bypassed the buggy "Custom Tabs" plugin injection. `discoverPage.js` now reads `NavPlacement` from settings and natively injects an `emby-button` into either the Sidebar or Header Tabs block directly via Javascript. This cleanly replaces the Jellyfin view without browser tracker/adblocker bugs breaking the Discover load. |
 
+## Phase 13 — UI Refinement & Secondary Menus (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Transparent Glass Cards | `discover-card` was missing its `background` property. Added `rgba(255, 255, 255, 0.04)` and `border-radius: 8px` to ensure the list items render as slightly visible, rounded glass cards on dark backgrounds. |
+| Button Colors | Fixed CSS overriding to explicitly set the Request button (`.btn-request`) to purple (`#7B5EA7`) at all times. Forced the Stream and Discover More buttons to Jellyfin green (`#00C853`). The action bar padding was tweaked to cleanly contain the buttons inside the card's width boundaries. |
+| Heading Alignment | Removed the `1%` lateral padding from the wrapper grids and rows, shifting the elements to mathematically align 1:1 with the left side of the `<h2>` section headers above them. |
+| Secondary Navbar Injector | Ripped out the basic 'Home' appending sidebar code. Injected the user's custom `MutationObserver` template. The script now aggressively hunts for `.customMenuOptions [data-name="watchlist"]` and dynamically appends **Calendar**, **Live Downloads**, and **Discover** directly below it perfectly styled. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.18** — Phase 12 completed (UI Redesign, Grid Layout, Native DOM Navigation NavPlacement).
+**Latest Release: v1.0.19** — Phase 13 completed (UI Transparency, Button Colors, Sidebar Secondary Menus).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above

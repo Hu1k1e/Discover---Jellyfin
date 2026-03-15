@@ -76,7 +76,7 @@
                 display: flex;
                 overflow: hidden;
                 gap: 16px;
-                padding: 4px 1% 14px 1%;
+                padding: 4px 0 14px 0;
                 cursor: grab;
                 user-select: none;
                 -webkit-user-select: none;
@@ -85,7 +85,7 @@
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                 gap: 16px;
-                padding: 4px 1% 14px 1%;
+                padding: 4px 0 14px 0;
             }
             .discover-row.dragging { cursor: grabbing; }
 
@@ -118,10 +118,15 @@
                 display: flex; flex-direction: column;
                 flex: 0 0 auto;
                 width: 150px;
-                overflow: visible;
+                background: rgba(255, 255, 255, 0.04);
+                border-radius: 8px;
+                overflow: hidden; 
+                padding-bottom: 6px;
                 scroll-snap-align: start;
                 user-select: none;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
             }
+            .discover-card:hover { transform: scale(1.04); box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
             .discover-grid .discover-card {
                 width: 100%;
             }
@@ -129,12 +134,8 @@
             /* ── Poster wrapper ── */
             .discover-card .dc-poster {
                 position: relative; width: 100%; aspect-ratio: 2/3;
-                border-radius: 8px;
                 overflow: hidden; background: #111; flex-shrink: 0;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             }
-            .discover-card.hover-enabled:hover .dc-poster { transform: scale(1.04); box-shadow: 0 8px 24px rgba(0,0,0,0.6); cursor: pointer; }
             .discover-card .dc-poster img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
             .dc-no-poster {
                 width: 100%; height: 100%;
@@ -177,24 +178,29 @@
             .dc-title {
                 margin-top: 8px; font-size: 0.9em; font-weight: 500;
                 text-align: center; color: #fff;
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px;
             }
             .dc-date { text-align: center; font-size: 0.77em; color: #aaa; margin-top: 2px; }
 
             /* ── Button Bar (Below Title) ── */
             .dc-action-bar {
                 display: flex; flex-direction: column; gap: 6px;
-                margin-top: 8px; padding: 0 4px;
+                margin-top: auto; padding: 8px 6px 4px 6px;
             }
             .dc-action-bar button, .dc-action-bar a {
                 width: 100%; border-radius: 5px; font-weight: 600; cursor: pointer; border: none; padding: 7px; font-size: 13px;
-                text-align: center; text-decoration: none; transition: opacity 0.2s;
+                text-align: center; text-decoration: none; transition: opacity 0.2s; box-sizing: border-box;
             }
             .dc-action-bar button:hover, .dc-action-bar a:hover { opacity: 0.85; }
             .dc-action-bar button:disabled { opacity: 1 !important; cursor: default; }
 
-            .discover-loading { padding: 14px 5%; color: #999; font-style: italic; }
-            .discover-error   { padding: 14px 5%; color: #ef5350; line-height: 1.7; }
+            /* Colors */
+            .btn-request { background: #7B5EA7 !important; color: #fff !important; }
+            .btn-request[disabled] { background: #4a4a4a !important; color: #fff !important; }
+            .btn-stream { background: #00C853 !important; color: #fff !important; }
+
+            .discover-loading { padding: 14px 0; color: #999; font-style: italic; }
+            .discover-error   { padding: 14px 0; color: #ef5350; line-height: 1.7; }
             .discover-hidden  { display: none !important; }
 
             /* ──────────────────────────────────────────
@@ -265,7 +271,7 @@
                 + '<div class="discover-grid" data-row="' + id + '">'
                 + '  <div class="discover-loading">Loading&hellip;</div>'
                 + '</div>'
-                + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background:#00c2ff; color:#000; display:none;">Discover More</button></div>'
+                + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background:#00C853; color:#fff; display:none;">Discover More</button></div>'
                 + '</div>';
         }
         return '<div class="discover-section" data-section="' + id + '">'
@@ -664,14 +670,14 @@
                 playHtml = '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>';
             } else if (tmdbId) {
                 // Unavailable Rec: Show Request and Stream buttons below the title
-                actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
+                actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 if (streamBaseUrl) {
-                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream" style="background:#00C853; color:#fff;">Stream</a>';
+                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream">Stream</a>';
                 }
             }
         } else if (tmdbId) {
             // Upcoming: Just Request block button
-            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
+            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
         }
 
         var posterHtml = posterUrl
@@ -893,7 +899,7 @@
         populateDiscoverContainer(injectWrapper);
     }
 
-    // Inject Navigation dynamically based on NavPlacement configuration
+    // Inject Navigation dynamically based on NavPlacement configuration + Secondary Links
     async function injectNativeNavigation() {
         if (window._discoverNavInjected) return;
         var config = await fetchPluginConfig();
@@ -920,30 +926,73 @@
                 }
             }, 500);
         } else {
-            // Sidebar Placement
+            // Sidebar Placement - Secondary Links (Calendar, Live Downloads, Discover)
             var sbInterval = setInterval(function() {
-                var menu = document.querySelector('.navMenu');
-                if (menu && !menu.querySelector('.discover-sidebar-tab')) {
+                var container = document.querySelector('.customMenuOptions');
+                if (container && !document.getElementById('htv-calendar-link')) {
                     clearInterval(sbInterval);
-                    var link = document.createElement('a');
-                    link.className = 'navMenuOption emby-button discover-sidebar-tab';
-                    link.title = 'Discover';
-                    link.innerHTML = '<span class="navMenuOptionIcon material-icons">explore</span><span class="navMenuOptionText">Discover</span>';
-                    link.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        // Close sidebar drawer natively
-                        var drawer = document.querySelector('.appDrawer-open');
-                        if (drawer) drawer.classList.remove('appDrawer-open');
-                        window.location.hash = '#/discover';
-                        setTimeout(mountNativeDiscoverView, 50);
+                    var watchlist = container.querySelector('[data-name="watchlist"]');
+                    
+                    var LINKS = [
+                        {
+                            id: "htv-calendar-link",
+                            label: "Calendar",
+                            href: "#/userpluginsettings.html?pageUrl=/JellyfinEnhanced/calendarPage",
+                            icon: "event"
+                        },
+                        {
+                            id: "htv-downloads-link",
+                            label: "Live Downloads",
+                            href: "#/userpluginsettings.html?pageUrl=/JellyfinEnhanced/downloadsPage",
+                            icon: "downloading"
+                        },
+                        {
+                            id: "htv-discover-link",
+                            label: "Discover",
+                            href: "#/discover",
+                            icon: "explore",
+                            isDiscover: true
+                        }
+                    ];
+
+                    LINKS.forEach(function(cfg, i) {
+                        if (document.getElementById(cfg.id)) return;
+
+                        var a = document.createElement("a");
+                        a.id = cfg.id;
+                        a.href = cfg.href;
+                        a.className = "emby-linkbutton navMenuOption lnkMediaFolder discover-sidebar-tab";
+                        a.title = cfg.label;
+
+                        a.innerHTML = 
+                            '<i class="md-icon navMenuOptionIcon material-icons">' + cfg.icon + '</i>' +
+                            '<span class="navMenuOptionText">' + cfg.label + '</span>';
+
+                        if (cfg.isDiscover) {
+                            a.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                var drawer = document.querySelector('.appDrawer-open');
+                                if (drawer) drawer.classList.remove('appDrawer-open');
+                                window.location.hash = '#/discover';
+                                setTimeout(mountNativeDiscoverView, 50);
+                            });
+                        }
+
+                        // Insert in order directly after Watchlist
+                        if (watchlist) {
+                            if (i === 0) {
+                                watchlist.after(a);       // Calendar
+                            } else {
+                                // Insert sequentially
+                                var prev = document.getElementById(LINKS[i-1].id);
+                                if (prev) prev.after(a);
+                                else container.appendChild(a);
+                            }
+                        } else {
+                            container.appendChild(a);
+                        }
                     });
-                    // Insert right after Home
-                    var homeLink = menu.querySelector('a[href="#/home"]');
-                    if (homeLink && homeLink.nextSibling) {
-                        menu.insertBefore(link, homeLink.nextSibling);
-                    } else {
-                        menu.appendChild(link);
-                    }
+                    
                     window._discoverNavInjected = true;
                 }
             }, 500);
