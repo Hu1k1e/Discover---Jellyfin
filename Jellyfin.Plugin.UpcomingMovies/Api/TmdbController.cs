@@ -275,28 +275,28 @@ public class TmdbController : ControllerBase
                 // Start with source bonus (director/actor/seed sourcing)
                 double score = candidateSourceBonus.GetValueOrDefault(movieId);
 
-                // Genre weights: each matching genre contributes its profile weight × 1.5
+                // Genre weights (HIGHEST factor) — each matching genre contributes profile weight × 8
                 if (m.TryGetProperty("genre_ids", out var genreArr))
                 {
                     foreach (var g in genreArr.EnumerateArray())
                     {
                         if (g.TryGetInt32(out var gid))
-                            score += profile.GenreWeights.GetValueOrDefault(gid) * 1.5;
+                            score += profile.GenreWeights.GetValueOrDefault(gid) * 8.0;
                     }
                 }
 
-                // Language affinity: 2× multiplier for preferred language
+                // Language affinity (2× multiplier)
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
                     score += profile.LanguageWeights.GetValueOrDefault(lang) * 2.0;
                 }
 
-                // Vote average quality signal (0–10 → 0–50 pts)
+                // Vote average quality signal (0–10 → 0–40 pts)
                 if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out var va))
-                    score += va * 5.0;
+                    score += va * 4.0;
 
-                // Popularity (capped at 100 to avoid over-weighting blockbusters)
+                // Popularity (capped at 100)
                 if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out var pop))
                     score += Math.Min(pop, 100) * 0.3;
 
@@ -305,8 +305,8 @@ public class TmdbController : ControllerBase
                     DateTime.TryParse(rdProp.GetString(), out var releaseDate))
                 {
                     var yearsOld = (today - releaseDate).TotalDays / 365.25;
-                    if (yearsOld <= 2) score += 20;
-                    else if (yearsOld > 10) score -= 10;
+                    if (yearsOld <= 2) score += 15;
+                    else if (yearsOld > 10) score -= 8;
                 }
 
                 return (movieId, score, element: m);

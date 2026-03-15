@@ -1,6 +1,7 @@
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Controller;
+using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Jellyfin.Plugin.UpcomingMovies;
