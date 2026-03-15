@@ -38,11 +38,7 @@ public class UserDataSavedConsumer
     /// </summary>
     public void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
-        // Only care if user actually played or marked-watched
-        if (e.SaveReason != UserDataSaveReason.PlaybackFinished &&
-            e.SaveReason != UserDataSaveReason.TogglePlayed)
-            return;
-
+        // Only process if the item was marked as played (covers both playback-finish and manual mark)
         if (!e.UserData.Played)
             return;
 
