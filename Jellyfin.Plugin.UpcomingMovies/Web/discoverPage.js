@@ -363,6 +363,95 @@
             .dc-watchlist-btn svg { width: 16px; height: 16px; fill: #fff; transition: fill 0.18s; }
             .dc-watchlist-btn.active { background: rgba(0, 200, 83, 0.9); }
             .dc-watchlist-btn.active svg { fill: #fff; }
+
+            /* ── Filter Panel ————————————————— */
+            .df-toggle-btn {
+                background: rgba(255,255,255,0.07);
+                border: 1px solid rgba(255,255,255,0.16);
+                color: #e0e0e0;
+                border-radius: 6px;
+                padding: 5px 12px;
+                cursor: pointer;
+                font-size: 0.82em;
+                font-weight: 600;
+                letter-spacing: 0.03em;
+                white-space: nowrap;
+                transition: background 0.18s, border-color 0.18s;
+                margin-right: 4%;
+                flex-shrink: 0;
+            }
+            .df-toggle-btn:hover, .df-toggle-btn.active { background: rgba(0,200,83,0.16); border-color: #00C853; color: #00C853; }
+            .df-panel {
+                margin: 0 4% 14px 4%;
+                background: rgba(18,18,28,0.97);
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 10px;
+                padding: 16px 20px 14px 20px;
+                display: none;
+            }
+            .df-panel.show { display: block; }
+            .df-section-label {
+                font-size: 0.75em;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                color: #888;
+                margin: 12px 0 7px 0;
+            }
+            .df-section-label:first-child { margin-top: 0; }
+            .df-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+            .df-pill {
+                padding: 4px 11px;
+                border-radius: 20px;
+                border: 1px solid rgba(255,255,255,0.18);
+                background: rgba(255,255,255,0.05);
+                color: #ccc;
+                font-size: 0.8em;
+                cursor: pointer;
+                transition: background 0.15s, border-color 0.15s, color 0.15s;
+                user-select: none;
+            }
+            .df-pill.active { background: rgba(0,200,83,0.22); border-color: #00C853; color: #00C853; }
+            .df-pill:hover { border-color: #aaa; color: #fff; }
+            .df-check-row { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+            .df-check-row label {
+                display: flex; align-items: center; gap: 5px;
+                font-size: 0.82em; color: #ccc; cursor: pointer;
+            }
+            .df-check-row input[type=checkbox] { accent-color: #00C853; width: 14px; height: 14px; }
+            .df-date-row { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+            .df-date-row label { font-size: 0.82em; color: #aaa; display: flex; align-items: center; gap: 6px; }
+            .df-date-input {
+                background: rgba(255,255,255,0.07);
+                border: 1px solid rgba(255,255,255,0.15);
+                color: #e0e0e0;
+                border-radius: 5px;
+                padding: 4px 8px;
+                font-size: 0.82em;
+            }
+            .df-footer { display: flex; gap: 10px; margin-top: 14px; justify-content: flex-end; }
+            .df-apply-btn {
+                background: #00C853;
+                color: #000;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: 700;
+                font-size: 0.84em;
+                cursor: pointer;
+                transition: background 0.18s;
+            }
+            .df-apply-btn:hover { background: #00e676; }
+            .df-reset-btn {
+                background: transparent;
+                color: #888;
+                border: 1px solid rgba(255,255,255,0.12);
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 0.84em;
+                cursor: pointer;
+            }
+            .df-reset-btn:hover { color: #ccc; border-color: #aaa; }
         `;
         document.head.appendChild(style);
     }
@@ -371,10 +460,105 @@
     // 4. HTML TEMPLATE
     // ─────────────────────────────────────────────
 
+    // Language + genre constants used by both sections
+    var FILTER_LANGS = [
+        { code: 'en', label: 'English' },
+        { code: 'hi', label: 'Hindi' },
+        { code: 'ml', label: 'Malayalam' },
+        { code: 'ta', label: 'Tamil' },
+        { code: 'te', label: 'Telugu' },
+        { code: 'ko', label: 'Korean' },
+        { code: 'ja', label: 'Japanese' }
+    ];
+    var FILTER_GENRES = [
+        { id: 28,    name: 'Action' },    { id: 12,    name: 'Adventure' },
+        { id: 16,    name: 'Animation' }, { id: 35,    name: 'Comedy' },
+        { id: 80,    name: 'Crime' },     { id: 99,    name: 'Documentary' },
+        { id: 18,    name: 'Drama' },     { id: 10751, name: 'Family' },
+        { id: 14,    name: 'Fantasy' },   { id: 36,    name: 'History' },
+        { id: 27,    name: 'Horror' },    { id: 10402, name: 'Music' },
+        { id: 9648,  name: 'Mystery' },   { id: 10749, name: 'Romance' },
+        { id: 878,   name: 'Sci-Fi' },    { id: 53,    name: 'Thriller' },
+        { id: 10752, name: 'War' },       { id: 37,    name: 'Western' }
+    ];
+    var RELEASE_TYPES = [
+        { val: 1, label: 'Premiere' },
+        { val: 2, label: 'Theatrical (limited)' },
+        { val: 3, label: 'Theatrical' },
+        { val: 4, label: 'Digital' },
+        { val: 5, label: 'Physical' },
+        { val: 6, label: 'TV' }
+    ];
+
+    function _todayStr() { return new Date().toISOString().slice(0,10); }
+    function _oneYearStr() { var d = new Date(); d.setFullYear(d.getFullYear()+1); return d.toISOString().slice(0,10); }
+
+    // Default filter states
+    var _upcFilters = {
+        languages:    FILTER_LANGS.map(function(l){ return l.code; }),   // all selected
+        genres:       [],           // [] = all genres
+        releaseTypes: [1,2,3,4,5], // all except TV
+        dateFrom:     _todayStr(),
+        dateTo:       _oneYearStr()
+    };
+    var _recFilters = {
+        languages: [],  // [] = no restriction
+        genres:    []   // [] = all genres
+    };
+
+    function buildFilterPanelHtml(sectionId) {
+        var isUpcoming = sectionId === 'upcoming';
+        var filters    = isUpcoming ? _upcFilters : _recFilters;
+
+        var langPills = FILTER_LANGS.map(function(l) {
+            var active = isUpcoming
+                ? (filters.languages.indexOf(l.code) !== -1 ? ' active' : '')
+                : (filters.languages.indexOf(l.code) !== -1 ? ' active' : '');
+            return '<button class="df-pill' + active + '" data-filter="lang" data-val="' + l.code + '">' + l.label + '</button>';
+        }).join('');
+
+        var genrePills = FILTER_GENRES.map(function(g) {
+            var active = filters.genres.indexOf(g.id) !== -1 ? ' active' : '';
+            return '<button class="df-pill' + active + '" data-filter="genre" data-val="' + g.id + '">' + g.name + '</button>';
+        }).join('');
+
+        var rtHtml = '';
+        var dateHtml = '';
+        if (isUpcoming) {
+            rtHtml = '<div class="df-section-label">Release Types</div>'
+                + '<div class="df-check-row">' + RELEASE_TYPES.map(function(rt) {
+                    var chk = filters.releaseTypes.indexOf(rt.val) !== -1 ? ' checked' : '';
+                    return '<label><input type="checkbox" data-filter="rt" data-val="' + rt.val + '"' + chk + '> ' + rt.label + '</label>';
+                }).join('') + '</div>';
+            dateHtml = '<div class="df-section-label">Release Date Range</div>'
+                + '<div class="df-date-row">'
+                + '<label>From <input type="date" class="df-date-input" data-filter="dateFrom" value="' + filters.dateFrom + '"></label>'
+                + '<label>To &nbsp; <input type="date" class="df-date-input" data-filter="dateTo" value="' + filters.dateTo + '"></label>'
+                + '</div>';
+        }
+
+        return '<div class="df-panel" data-panel="' + sectionId + '">'
+            + '<div class="df-section-label">Languages' + (isUpcoming ? ' <span style="color:#555;font-weight:400">(all selected by default)</span>' : ' <span style="color:#555;font-weight:400">(none = any)</span>') + '</div>'
+            + '<div class="df-pills" data-group="lang">' + langPills + '</div>'
+            + '<div class="df-section-label">Genres <span style="color:#555;font-weight:400">(none selected = all genres)</span></div>'
+            + '<div class="df-pills" data-group="genre">' + genrePills + '</div>'
+            + rtHtml + dateHtml
+            + '<div class="df-footer">'
+            + '<button class="df-reset-btn" data-reset="' + sectionId + '">Reset</button>'
+            + '<button class="df-apply-btn" data-apply="' + sectionId + '">Apply Filters</button>'
+            + '</div>'
+            + '</div>';
+    }
+
     function buildSectionHtml(id, title, isGrid) {
+        var filterBtn = '<button class="df-toggle-btn" data-toggle-filter="' + id + '">Filters &#9660;</button>';
         if (isGrid) {
             return '<div class="discover-section" data-section="' + id + '">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;">'
                 + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
+                + filterBtn
+                + '</div>'
+                + buildFilterPanelHtml(id)
                 + '<div class="discover-grid padded-left padded-right" data-row="' + id + '">'
                 + '  <div class="discover-loading">Loading&hellip;</div>'
                 + '</div>'
@@ -385,8 +569,9 @@
         return '<div class="discover-section" data-section="' + id + '">'
             + '<div style="display:flex; align-items:center; justify-content:space-between;">'
             + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
-            + refreshBtn
+            + '<div style="display:flex;gap:8px;align-items:center;">' + filterBtn + refreshBtn + '</div>'
             + '</div>'
+            + buildFilterPanelHtml(id)
             + '<div class="discover-row-wrap">'
             + '  <div class="discover-row padded-left padded-right" data-row="' + id + '">'
             + '    <div class="discover-loading">Loading&hellip;</div>'
@@ -489,8 +674,17 @@
 
     var NEEDS_SETUP = { _needsSetup: true };
 
-    async function fetchUpcoming() {
-        var res = await fetch('/UpcomingMovies/tmdb/upcoming', {
+    async function fetchUpcoming(filters) {
+        var params = [];
+        if (filters) {
+            if (filters.languages  && filters.languages.length)  params.push('languages='    + encodeURIComponent(filters.languages.join(',')));
+            if (filters.genres     && filters.genres.length)     params.push('genres='       + encodeURIComponent(filters.genres.join(',')));
+            if (filters.releaseTypes && filters.releaseTypes.length) params.push('releaseTypes=' + encodeURIComponent(filters.releaseTypes.join(',')));
+            if (filters.dateFrom)  params.push('dateFrom=' + encodeURIComponent(filters.dateFrom));
+            if (filters.dateTo)    params.push('dateTo='   + encodeURIComponent(filters.dateTo));
+        }
+        var qs = params.length ? '?' + params.join('&') : '';
+        var res = await fetch('/UpcomingMovies/tmdb/upcoming' + qs, {
             headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
         });
         if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
@@ -509,13 +703,19 @@
     // receives a pre-scored, ranked list — no heavy client-side work needed.
     // ─────────────────────────────────────────────────────────────────────────────
 
-    async function fetchRecommendations(page) {
+    async function fetchRecommendations(page, filters) {
         page = page || 1;
         var client = window.ApiClient;
         var userId = client && client.getCurrentUserId ? client.getCurrentUserId() : '';
 
         var params = ['page=' + page];
         if (userId) params.push('userId=' + encodeURIComponent(userId));
+        if (filters) {
+            if (filters.languages && filters.languages.length) params.push('filterLanguages=' + encodeURIComponent(filters.languages.join(',')));
+            if (filters.genres    && filters.genres.length)    params.push('filterGenres='    + encodeURIComponent(filters.genres.join(',')));
+            if (filters.dateFrom) params.push('filterDateFrom=' + encodeURIComponent(filters.dateFrom));
+            if (filters.dateTo)   params.push('filterDateTo='   + encodeURIComponent(filters.dateTo));
+        }
 
         var res = await fetch('/UpcomingMovies/tmdb/recommendations?' + params.join('&'), {
             headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
@@ -1154,6 +1354,7 @@
             containerDiv.innerHTML = getGridTemplate();
         }
 
+
         var config = await fetchPluginConfig();
         var streamBaseUrl = config.streamBaseUrl || '';
 
@@ -1177,8 +1378,8 @@
         function isSetup(v) { return v && v._needsSetup; }
 
         var results = await Promise.all([
-            config.showUpcoming      ? fetchUpcoming().catch(function(e)         { ERR('fetchUpcoming:', e);      return null; }) : null,
-            config.showRecommendations ? fetchRecommendations().catch(function(e) { ERR('fetchRecommendations:', e); return null; }) : null
+            config.showUpcoming        ? fetchUpcoming(_upcFilters).catch(function(e)           { ERR('fetchUpcoming:', e);      return null; }) : null,
+            config.showRecommendations ? fetchRecommendations(1, _recFilters).catch(function(e) { ERR('fetchRecommendations:', e); return null; }) : null
         ]);
         var upc = results[0], rec = results[1];
 
@@ -1238,16 +1439,162 @@
         var _tmdbRecBuffer = [];
         var _tmdbRecPage = 1;
         var _tmdbRecTotalPages = 1;
-        // Tracks every TMDB ID already rendered in recommendations — prevents cross-page dupes
-        // when backend scoring overlaps between successive page fetches
+        // Tracks every TMDB ID already rendered in recommendations
         var _renderedRecIds = new Set();
+
+        // ── Wire filter panel interactions (after all vars are in scope) ──
+        // Pill toggle (language / genre)
+        containerDiv.querySelectorAll('.df-pill').forEach(function(pill) {
+            pill.addEventListener('click', function() {
+                var filterType = pill.dataset.filter;
+                var val        = pill.dataset.val;
+                var panelEl    = pill.closest('[data-panel]');
+                var sid        = panelEl ? panelEl.dataset.panel : null;
+                if (!sid) return;
+                var f = sid === 'upcoming' ? _upcFilters : _recFilters;
+                if (filterType === 'lang') {
+                    var idx = f.languages.indexOf(val);
+                    if (idx !== -1) { f.languages.splice(idx, 1); pill.classList.remove('active'); }
+                    else            { f.languages.push(val);       pill.classList.add('active'); }
+                } else if (filterType === 'genre') {
+                    var gid = parseInt(val, 10);
+                    var gi  = f.genres.indexOf(gid);
+                    if (gi !== -1) { f.genres.splice(gi, 1); pill.classList.remove('active'); }
+                    else           { f.genres.push(gid);      pill.classList.add('active'); }
+                }
+            });
+        });
+        // Release-type checkboxes
+        containerDiv.querySelectorAll('input[data-filter="rt"]').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var val = parseInt(cb.dataset.val, 10);
+                var idx = _upcFilters.releaseTypes.indexOf(val);
+                if (cb.checked) { if (idx === -1) _upcFilters.releaseTypes.push(val); }
+                else             { if (idx !== -1) _upcFilters.releaseTypes.splice(idx, 1); }
+            });
+        });
+        // Date inputs
+        containerDiv.querySelectorAll('input[data-filter="dateFrom"]').forEach(function(el) {
+            el.addEventListener('change', function() { _upcFilters.dateFrom = el.value; });
+        });
+        containerDiv.querySelectorAll('input[data-filter="dateTo"]').forEach(function(el) {
+            el.addEventListener('change', function() { _upcFilters.dateTo = el.value; });
+        });
+        // Toggle buttons
+        containerDiv.querySelectorAll('[data-toggle-filter]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var sid   = btn.dataset.toggleFilter;
+                var panel = containerDiv.querySelector('[data-panel="' + sid + '"]');
+                if (!panel) return;
+                var isOpen = panel.classList.toggle('show');
+                btn.classList.toggle('active', isOpen);
+                btn.innerHTML = 'Filters ' + (isOpen ? '&#9650;' : '&#9660;');
+            });
+        });
+        // Reset buttons
+        containerDiv.querySelectorAll('[data-reset]').forEach(function(resetBtn) {
+            resetBtn.addEventListener('click', function() {
+                var sid = resetBtn.dataset.reset;
+                if (sid === 'upcoming') {
+                    _upcFilters.languages    = FILTER_LANGS.map(function(l){ return l.code; });
+                    _upcFilters.genres       = [];
+                    _upcFilters.releaseTypes = [1,2,3,4,5];
+                    _upcFilters.dateFrom     = _todayStr();
+                    _upcFilters.dateTo       = _oneYearStr();
+                } else {
+                    _recFilters.languages = [];
+                    _recFilters.genres    = [];
+                }
+                // Rebuild + re-wire panel
+                var panel = containerDiv.querySelector('[data-panel="' + sid + '"]');
+                if (panel) {
+                    var tmp = document.createElement('div');
+                    tmp.innerHTML = buildFilterPanelHtml(sid);
+                    panel.parentElement.replaceChild(tmp.firstChild, panel);
+                    // Re-wire the new panel's pills/checkboxes (toggle/apply keep working via event delegation is not used
+                    // so we re-query and re-attach on the new elements only)
+                    containerDiv.querySelectorAll('[data-panel="' + sid + '"] .df-pill').forEach(function(p2) {
+                        p2.addEventListener('click', function() {
+                            var ft = p2.dataset.filter, v = p2.dataset.val;
+                            var f = sid === 'upcoming' ? _upcFilters : _recFilters;
+                            if (ft === 'lang') {
+                                var ix = f.languages.indexOf(v);
+                                if (ix !== -1) { f.languages.splice(ix,1); p2.classList.remove('active'); }
+                                else           { f.languages.push(v);      p2.classList.add('active'); }
+                            } else if (ft === 'genre') {
+                                var gid2 = parseInt(v,10), gi2 = f.genres.indexOf(gid2);
+                                if (gi2 !== -1) { f.genres.splice(gi2,1); p2.classList.remove('active'); }
+                                else            { f.genres.push(gid2);    p2.classList.add('active'); }
+                            }
+                        });
+                    });
+                    containerDiv.querySelectorAll('[data-panel="' + sid + '"] input[data-filter="rt"]').forEach(function(cb2) {
+                        cb2.addEventListener('change', function() {
+                            var v2 = parseInt(cb2.dataset.val,10), ix2 = _upcFilters.releaseTypes.indexOf(v2);
+                            if (cb2.checked) { if (ix2===-1) _upcFilters.releaseTypes.push(v2); }
+                            else             { if (ix2!==-1) _upcFilters.releaseTypes.splice(ix2,1); }
+                        });
+                    });
+                    // Re-attach toggle, reset, apply in the new panel
+                    var newToggle = containerDiv.querySelector('[data-toggle-filter="' + sid + '"]');
+                    if (newToggle) {
+                        newToggle.addEventListener('click', function() {
+                            var pp = containerDiv.querySelector('[data-panel="'+sid+'"]');
+                            if (!pp) return;
+                            var io = pp.classList.toggle('show');
+                            newToggle.classList.toggle('active', io);
+                            newToggle.innerHTML = 'Filters '+(io?'&#9650;':'&#9660;');
+                        });
+                    }
+                }
+            });
+        });
+        // Apply buttons
+        containerDiv.querySelectorAll('[data-apply]').forEach(function(applyBtn) {
+            applyBtn.addEventListener('click', async function() {
+                var sid = applyBtn.dataset.apply;
+                applyBtn.textContent = 'Applying...';
+                applyBtn.disabled = true;
+                try {
+                    if (sid === 'upcoming' && rowUpcoming) {
+                        rowUpcoming.innerHTML = '<div class="discover-loading">Filtering&hellip;</div>';
+                        var uNew = await fetchUpcoming(_upcFilters);
+                        if (isSetup(uNew)) rowUpcoming.innerHTML = SETUP_HTML;
+                        else if (uNew)     renderTmdbCards(uNew.results, rowUpcoming, streamBaseUrl, true);
+                        else               rowUpcoming.innerHTML = '<div class="discover-error">Failed to load.</div>';
+                    } else if (sid === 'recommended' && rowRec) {
+                        rowRec.innerHTML = '<div class="discover-loading">Filtering&hellip;</div>';
+                        _tmdbRecBuffer = []; _tmdbRecPage = 2; _renderedRecIds.clear();
+                        var rNew = await fetchRecommendations(1, _recFilters);
+                        if (isSetup(rNew)) { rowRec.innerHTML = SETUP_HTML; }
+                        else if (rNew && rNew.results) {
+                            var rChunk = rNew.results.filter(function(m) {
+                                if (!m || !m.id) return false;
+                                if (_renderedRecIds.has(String(m.id))) return false;
+                                _renderedRecIds.add(String(m.id));
+                                var li = tmdbMap[m.id];
+                                if (li) { m.isAvailable=true; m.jellyfinId=li.id; m.isWatchlisted=li.isWatchlisted; }
+                                return true;
+                            });
+                            renderTmdbCards(rChunk, rowRec, streamBaseUrl, false, false);
+                            // Refill buffer from remaining results
+                            Array.prototype.push.apply(_tmdbRecBuffer, rNew.results);
+                        } else {
+                            rowRec.innerHTML = '<div class="discover-error">Failed to load.</div>';
+                        }
+                    }
+                } catch(err) { ERR('Apply filter error:', err); }
+                finally { applyBtn.textContent = 'Apply Filters'; applyBtn.disabled = false; }
+            });
+        });
+        // ── End filter wiring ───────────────────────────────
 
         async function ensureRecommendationsBuffer(targetCount) {
             // Fetch until buffer has enough items AFTER dedup, or we've exhausted all pages.
             // We fetch up to 3× targetCount raw so the dedup filter still leaves enough.
             var fetchTarget = targetCount * 3;
             while (_tmdbRecBuffer.length < fetchTarget && _tmdbRecPage <= _tmdbRecTotalPages) {
-                var raw = await fetchRecommendations(_tmdbRecPage);
+                var raw = await fetchRecommendations(_tmdbRecPage, _recFilters);
                 if (!raw || !raw.results) break;
                 if (_tmdbRecPage === 2) _tmdbRecTotalPages = raw.total_pages || 50;
 

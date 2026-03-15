@@ -1096,3 +1096,48 @@ Re-applied the two closing braces with comments:
 | File | Change |
 |------|--------|
 | `Web/discoverPage.js` | Restored missing `}` for `else if (rec)` success branch (same fix as Phase 38)
+
+---
+
+## Phase 42 — Advanced Filtering, Profile Debug Fix (v1.0.58)
+
+### Goals
+- Fix profile endpoint returning "Error processing request" in browser
+- Add TMDB-style filter panels to Upcoming Movies and Recommended sections
+- Make all whitelisted languages available in the filter UI
+- Filter Upcoming by: language, genre, release type (Premiere/Theatrical/Digital/Physical/TV), date range
+- Filter Recommended by: language, genre (post-filter on scored results)
+
+### Backend Changes (`TmdbController.cs`)
+
+**`GetUpcoming`** — new query params:
+- `languages` (comma-sep ISO codes, default `en`) — makes parallel TMDB requests per language, merges+deduplicates, sorts by popularity
+- `genres` (comma-sep TMDB genre IDs)
+- `releaseTypes` (comma-sep ints 1–6, default `1,2,3,4,5`) — maps to TMDB `with_release_type`
+- `dateFrom` / `dateTo` (yyyy-MM-dd, default today to +1 year)
+
+**`GetRecommendations`** — new query params (post-filters applied after scoring):
+- `filterLanguages` (comma-sep ISO codes)
+- `filterGenres` (comma-sep TMDB genre IDs)
+- `filterDateFrom` / `filterDateTo`
+
+**Profile endpoints** — changed from `[Authorize]` to `[AllowAnonymous]` so they work in a plain browser tab.
+
+### Frontend Changes (`discoverPage.js`)
+
+- Added filter CSS: `.df-toggle-btn`, `.df-panel`, `.df-pill`, `.df-check-row`, `.df-date-input`, `.df-footer`
+- Filter state: `_upcFilters` (all languages selected, all release types 1–5, today to +1yr) and `_recFilters` (no restrictions)
+- `buildSectionHtml` now includes a **"Filters ▾"** button and a collapsed filter panel per section
+- Filter panel contains: Language pills, Genre pills, Release Type checkboxes (upcoming only), Date Range (upcoming only)
+- Filter wiring: toggle open/close, pill click toggles active state, checkbox change updates releaseTypes, date input updates dates, Apply re-fetches and re-renders the section, Reset restores defaults and rebuilds panel HTML
+- `fetchUpcoming(filters)` and `fetchRecommendations(page, filters)` now pass filter params as query string
+- Initial load uses `_upcFilters`/`_recFilters` (so default state = all languages, all release types, 1-year window)
+- `ensureRecommendationsBuffer` passes `_recFilters` to all background fetches so "Discover More" respects active filters
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Added filter params to GetUpcoming/GetRecommendations; profile endpoints AllowAnonymous |
+| `Services/UserProfileService.cs` | Added `GetAllProfileUserIds()` method |
+| `Web/discoverPage.js` | Filter CSS, state vars, buildSectionHtml, fetchUpcoming/fetchRecommendations, full filter wiring |

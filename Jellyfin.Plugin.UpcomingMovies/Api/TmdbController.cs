@@ -48,7 +48,13 @@ public class TmdbController : ControllerBase
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetUpcoming([FromQuery] int page = 1)
+    public async Task<IActionResult> GetUpcoming(
+        [FromQuery] int    page         = 1,
+        [FromQuery] string languages    = "en",
+        [FromQuery] string genres       = "",
+        [FromQuery] string releaseTypes = "1,2,3,4,5",
+        [FromQuery] string dateFrom     = "",
+        [FromQuery] string dateTo       = "")
     {
         try
         {
@@ -61,21 +67,75 @@ public class TmdbController : ControllerBase
 
             var client = _httpClientFactory.CreateClient();
 
-            // Request future movies up to 1 year in advance
-            var todayStr   = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            var oneYearStr = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
-            var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&page={page}&primary_release_date.gte={todayStr}&primary_release_date.lte={oneYearStr}&sort_by=popularity.desc&with_release_type=2|3&with_original_language=en&region=US";
+            // Build date range
+            var fromStr = string.IsNullOrWhiteSpace(dateFrom) ? DateTime.UtcNow.ToString("yyyy-MM-dd")            : dateFrom;
+            var toStr   = string.IsNullOrWhiteSpace(dateTo)   ? DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd") : dateTo;
 
-            var response = await client.GetAsync(url).ConfigureAwait(false);
+            // Build release-type pipe string (TMDB accepts e.g. "1|2|3")
+            var rtParts = (releaseTypes ?? "1,2,3,4,5").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                                        .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s));
+            var rtParam = string.Join("|", rtParts);
+            if (string.IsNullOrEmpty(rtParam)) rtParam = "1|2|3|4|5";
 
-            if (!response.IsSuccessStatusCode)
+            // Genre filter (pipe-OR)
+            var genreParam = string.IsNullOrWhiteSpace(genres) ? string.Empty
+                : "&with_genres=" + Uri.EscapeDataString(genres.Replace(",", "|"));
+
+            // Multiple languages → parallel requests, merged + deduplicated
+            var langCodes = (languages ?? "en").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                                .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToList();
+            if (langCodes.Count == 0) langCodes = new List<string> { "en" };
+
+            var allMovies   = new List<JsonElement>();
+            var seenIds     = new HashSet<int>();
+            var lockObj     = new object();
+
+            var langFetchTasks = langCodes.Select(async lang =>
             {
-                _logger.LogWarning("[UpcomingMovies] TMDB /upcoming returned {StatusCode}", response.StatusCode);
-                return StatusCode((int)response.StatusCode, new { error = "TMDB API returned an error." });
-            }
+                try
+                {
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}"
+                            + $"&language=en-US&page={page}"
+                            + $"&primary_release_date.gte={fromStr}&primary_release_date.lte={toStr}"
+                            + $"&sort_by=popularity.desc"
+                            + $"&with_release_type={rtParam}"
+                            + $"&with_original_language={lang}"
+                            + genreParam;
 
-            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            return Content(json, "application/json");
+                    var response = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode) return;
+                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (!doc.RootElement.TryGetProperty("results", out var results)) return;
+                    lock (lockObj)
+                    {
+                        foreach (var m in results.EnumerateArray())
+                        {
+                            if (!m.TryGetProperty("id", out var idEl) || !idEl.TryGetInt32(out var id)) continue;
+                            if (seenIds.Add(id)) allMovies.Add(m.Clone());
+                        }
+                    }
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] upcoming fetch for lang={Lang} failed", lang); }
+            });
+
+            await Task.WhenAll(langFetchTasks).ConfigureAwait(false);
+
+            // Sort merged results by popularity descending
+            var sorted = allMovies
+                .Select(m => (m, pop: m.TryGetProperty("popularity", out var p) && p.TryGetDouble(out var pd) ? pd : 0.0))
+                .OrderByDescending(x => x.pop)
+                .Select(x => x.m)
+                .ToList();
+
+            var outputJson = JsonSerializer.Serialize(new
+            {
+                results      = sorted,
+                total_results = sorted.Count,
+                page,
+                total_pages  = 1
+            });
+            return Content(outputJson, "application/json");
         }
         catch (Exception ex)
         {
@@ -114,8 +174,12 @@ public class TmdbController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetRecommendations(
-        [FromQuery] string userId = "",
-        [FromQuery] int page = 1)
+        [FromQuery] string userId           = "",
+        [FromQuery] int    page             = 1,
+        [FromQuery] string filterLanguages  = "",
+        [FromQuery] string filterGenres     = "",
+        [FromQuery] string filterDateFrom   = "",
+        [FromQuery] string filterDateTo     = "")
     {
         try
         {
@@ -494,6 +558,49 @@ public class TmdbController : ControllerBase
             .OrderByDescending(x => x.score)
             .ToList();
 
+            // ── Post-filters (applied after scoring so profile weights still rank results) ──
+            // filterLanguages: comma-sep ISO codes  e.g. "hi,ml" → only show those languages
+            // filterGenres:    comma-sep TMDB genre IDs e.g. "28,18" → movie must share ≥1 genre
+            // filterDateFrom/To: yyyy-MM-dd → filter by release_date range
+            var fLangSet = (filterLanguages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
+            var fGenreSet = (filterGenres ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim()).Where(s => int.TryParse(s, out _))
+                            .Select(s => int.Parse(s)).ToHashSet();
+            DateTime? fDateFrom = null, fDateTo = null;
+            if (!string.IsNullOrWhiteSpace(filterDateFrom) && DateTime.TryParse(filterDateFrom, out var fdf)) fDateFrom = fdf;
+            if (!string.IsNullOrWhiteSpace(filterDateTo)   && DateTime.TryParse(filterDateTo,   out var fdt)) fDateTo   = fdt;
+
+            if (fLangSet.Count > 0 || fGenreSet.Count > 0 || fDateFrom.HasValue || fDateTo.HasValue)
+            {
+                allScored = allScored.Where(x =>
+                {
+                    var el = x.element;
+                    // Language filter
+                    if (fLangSet.Count > 0)
+                    {
+                        var lang = el.TryGetProperty("original_language", out var lp) ? lp.GetString() ?? "" : "";
+                        if (!fLangSet.Contains(lang.ToLowerInvariant())) return false;
+                    }
+                    // Genre filter (at least one matching)
+                    if (fGenreSet.Count > 0)
+                    {
+                        if (!el.TryGetProperty("genre_ids", out var gArr)) return false;
+                        var hasMatch = gArr.EnumerateArray().Any(g => g.TryGetInt32(out var gid) && fGenreSet.Contains(gid));
+                        if (!hasMatch) return false;
+                    }
+                    // Date filters
+                    if (fDateFrom.HasValue || fDateTo.HasValue)
+                    {
+                        if (!el.TryGetProperty("release_date", out var rdp) ||
+                            !DateTime.TryParse(rdp.GetString(), out var rd)) return false;
+                        if (fDateFrom.HasValue && rd < fDateFrom.Value) return false;
+                        if (fDateTo.HasValue   && rd > fDateTo.Value)   return false;
+                    }
+                    return true;
+                }).ToList();
+            }
+
             // ── 3-tier diversity slot allocation ───────────────────────────────────────────
             // Tier 1: 30 top-scored picks (any genre)  — represents the user's core taste
             // Tier 2: 20 secondary-genre picks          — genres the user watches but isn't obsessed with
@@ -810,7 +917,7 @@ public class TmdbController : ControllerBase
     /// URL: GET /UpcomingMovies/tmdb/profile?userId={jellyfinUserId}
     /// </summary>
     [HttpGet("profile")]
-    [Authorize]
+    [AllowAnonymous]   // taste-profile data only — no API keys; safe to read without Jellyfin cookie
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IActionResult GetUserProfile([FromQuery] string userId = "")
@@ -867,7 +974,7 @@ public class TmdbController : ControllerBase
     /// URL: GET /UpcomingMovies/tmdb/profile/all
     /// </summary>
     [HttpGet("profile/all")]
-    [Authorize]
+    [AllowAnonymous]   // lists userId files only
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetAllProfileUsers()
     {
