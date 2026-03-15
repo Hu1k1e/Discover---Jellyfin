@@ -697,40 +697,41 @@
 
     // ── Watchlist API helper (uses Jellyfin Likes = KefinTweaks Watchlist) ──
     // KefinTweaks watchlist stores items as UserData.Likes = true
-    // and queries them via Filters=Likes on the Items endpoint.
-    // The corresponding Jellyfin REST API is /Users/{uid}/LikedItems/{id}.
+    // The Jellyfin REST API is /Users/{uid}/LikedItems/{id} (POST=add, DELETE=remove).
+    // Auth must use X-Emby-Authorization with full MediaBrowser Token format.
     async function addToWatchlist(jellyfinId) {
         var client = window.ApiClient;
         if (!client) return;
-        var server = client._serverAddress;
-        var token  = client.accessToken ? client.accessToken() : '';
+        var server = client.serverAddress ? client.serverAddress() : '';
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
-        if (!uid) return;
+        if (!uid || !server) return;
         try {
             var res = await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
                 method: 'POST',
-                headers: { 'X-Emby-Token': token }
+                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
             });
-            if (!res.ok) WARN('[Watchlist] POST LikedItems failed:', res.status);
+            if (!res.ok) WARN('[Watchlist] POST LikedItems failed:', res.status, await res.text());
+            else LOG('[Watchlist] Added to watchlist:', jellyfinId);
         } catch (err) {
-            WARN('[Watchlist] network error:', err);
+            WARN('[Watchlist] network error adding to watchlist:', err);
         }
     }
 
     async function removeFromWatchlist(jellyfinId) {
         var client = window.ApiClient;
         if (!client) return;
-        var server = client._serverAddress;
-        var token  = client.accessToken ? client.accessToken() : '';
+        var server = client.serverAddress ? client.serverAddress() : '';
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
-        if (!uid) return;
+        if (!uid || !server) return;
         try {
-            await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
+            var res = await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
                 method: 'DELETE',
-                headers: { 'X-Emby-Token': token }
+                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
             });
+            if (!res.ok) WARN('[Watchlist] DELETE LikedItems failed:', res.status, await res.text());
+            else LOG('[Watchlist] Removed from watchlist:', jellyfinId);
         } catch (err) {
-            WARN('[Watchlist] DELETE network error:', err);
+            WARN('[Watchlist] network error removing from watchlist:', err);
         }
     }
 
