@@ -146,14 +146,15 @@ public class TmdbController : ControllerBase
             var candidateSourceBonus = new Dictionary<int, double>();
             var candidateElements    = new Dictionary<int, JsonElement>();
 
-            void AddCandidate(JsonElement movie, double sourceBonus)
+            void AddCandidate(JsonElement movie, double sourceBonus, bool bypassLangFilter = false)
             {
                 if (!movie.TryGetProperty("id", out var idProp) || !idProp.TryGetInt32(out var movieId)) return;
                 if (watchedIds.Contains(movieId)) return;
 
                 // Language allowlist: only surface languages the user cares about
                 // en=Hollywood, hi=Hindi, ta=Tamil, ml=Malayalam, te=Telugu, ko=Korean, ja=Japanese/Anime
-                if (movie.TryGetProperty("original_language", out var langEl))
+                // bypassLangFilter=true is set by Source 9 for the user's own top language
+                if (!bypassLangFilter && movie.TryGetProperty("original_language", out var langEl))
                 {
                     var lang = langEl.GetString();
                     if (!string.IsNullOrEmpty(lang) &&
@@ -171,12 +172,15 @@ public class TmdbController : ControllerBase
                 }
             }
 
+
             // ── Source 1: /recommendations from recent seed movies (+30) ──────────────────
+            // Cycle through TMDB pages per backend page so each call returns a fresh pool.
+            var tmdbPage1 = ((page - 1) % 3) + 1; // rotates 1→2→3→1→2→3
             var seedTasks = seedIds.Select(async seedId =>
             {
                 try
                 {
-                    var url = $"{TmdbBaseUrl}/movie/{seedId}/recommendations?api_key={apiKey}&language=en-US&page=1";
+                    var url = $"{TmdbBaseUrl}/movie/{seedId}/recommendations?api_key={apiKey}&language=en-US&page={tmdbPage1}";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -189,11 +193,12 @@ public class TmdbController : ControllerBase
             });
 
             // ── Source 2: /similar for top 3 seeds (+15) ──────────────────────────────────
+            var tmdbPage2 = ((page - 1) % 5) + 1; // rotates 1→2→3→4→5→1
             var simTasks = seedIds.Take(3).Select(async seedId =>
             {
                 try
                 {
-                    var url = $"{TmdbBaseUrl}/movie/{seedId}/similar?api_key={apiKey}&language=en-US&page=1";
+                    var url = $"{TmdbBaseUrl}/movie/{seedId}/similar?api_key={apiKey}&language=en-US&page={tmdbPage2}";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -206,6 +211,8 @@ public class TmdbController : ControllerBase
             });
 
             // ── Source 3: Genre-weighted discover (+0 — genre scoring applied inline) ────
+            // Uses a different TMDB page each call so results vary between Discover More clicks.
+            var tmdbPage3 = ((page - 1) % 8) + 1;
             var genreTask = Task.Run(async () =>
             {
                 try
@@ -213,7 +220,7 @@ public class TmdbController : ControllerBase
                     var genreFilter = topGenres.Count > 0
                         ? "&with_genres=" + Uri.EscapeDataString(string.Join("|", topGenres))
                         : string.Empty;
-                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=100&page={page}{genreFilter}";
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=100&page={tmdbPage3}{genreFilter}";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -321,6 +328,42 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] wl-seed recommendations/{Id} failed", wlId); }
             });
 
+            // ── Source 9: Language-affinity discover (+18) ──────────────────────────────
+            // If the user strongly prefers a non-English language (e.g. Hindi, Tamil, Korean),
+            // fetch content specifically in that language. This surface regional films that the
+            // genre/seed sources alone would not return because those default to en-US.
+            var topLang = profile.LanguageWeights.Count > 0
+                ? profile.LanguageWeights.OrderByDescending(kv => kv.Value).First().Key
+                : "en";
+            var langTask = Task.Run(async () =>
+            {
+                // Only run if the top language is non-English AND has meaningful weight
+                if (topLang == "en" || profile.LanguageWeights.GetValueOrDefault(topLang) < 2.5) return;
+                try
+                {
+                    var tmdbPageLang = ((page - 1) % 10) + 1;
+                    var genreFilter = topGenres.Count > 0
+                        ? "&with_genres=" + Uri.EscapeDataString(string.Join("|", topGenres.Take(3)))
+                        : string.Empty;
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
+                            + $"&with_original_language={topLang}"
+                            + $"&sort_by=vote_average.desc&vote_count.gte=50&page={tmdbPageLang}{genreFilter}";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                    {
+                        foreach (var m in results.EnumerateArray())
+                        {
+                            // Override language allowlist for user's top language
+                            AddCandidate(m, 18.0, bypassLangFilter: true);
+                        }
+                    }
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] lang-affinity source failed"); }
+            });
+
             // Run all sources in parallel for speed
             await Task.WhenAll(
                 Task.WhenAll(seedTasks),
@@ -330,7 +373,8 @@ public class TmdbController : ControllerBase
                 directorTask,
                 actorTask,
                 trendingTask,
-                popularTask
+                popularTask,
+                langTask
             ).ConfigureAwait(false);
 
             // ── Scoring engine ─────────────────────────────────────────────────────────────
@@ -476,12 +520,26 @@ public class TmdbController : ControllerBase
                 if (!added) break; // no more candidates at all
             }
 
+            // ── Output: Paginate 20 items per backend page from the diversified pool ───────────
+            // Each call to GetRecommendations(page=N) fetches fresh TMDB data and produces
+            // a freshly scored pool of ~80 diversified candidates. We return 20 per page so
+            // the frontend can call page=1,2,3... and reliably get new cards each time.
+            const int pageSize = 20;
+            var skip = (page - 1) * pageSize;
+            // If skip >= pool size, just return what we have from the end
+            if (skip >= diversified.Count) skip = Math.Max(0, diversified.Count - pageSize);
+            var pageResults = diversified.Skip(skip).Take(pageSize).ToList();
+            var totalPages  = Math.Max(1, (int)Math.Ceiling(diversified.Count / (double)pageSize));
+            // Surface the real total so frontend knows when to stop
+            // For practical purposes, treat as 50 pages (sources vary per page call so we never truly run out)
+            const int virtualTotalPages = 50;
+
             var finalJson = JsonSerializer.Serialize(new
             {
-                results = diversified,
+                results       = pageResults,
                 total_results = diversified.Count,
                 page,
-                total_pages = 500
+                total_pages   = virtualTotalPages
             });
 
             _logger.LogInformation(

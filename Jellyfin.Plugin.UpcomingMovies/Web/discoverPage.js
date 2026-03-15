@@ -1243,14 +1243,19 @@
         var _renderedRecIds = new Set();
 
         async function ensureRecommendationsBuffer(targetCount) {
-            while (_tmdbRecBuffer.length < targetCount && _tmdbRecPage <= _tmdbRecTotalPages) {
+            // Fetch until buffer has enough items AFTER dedup, or we've exhausted all pages.
+            // We fetch up to 3× targetCount raw so the dedup filter still leaves enough.
+            var fetchTarget = targetCount * 3;
+            while (_tmdbRecBuffer.length < fetchTarget && _tmdbRecPage <= _tmdbRecTotalPages) {
                 var raw = await fetchRecommendations(_tmdbRecPage);
                 if (!raw || !raw.results) break;
-                if (_tmdbRecPage === 1) _tmdbRecTotalPages = raw.total_pages || 1;
-                
+                if (_tmdbRecPage === 2) _tmdbRecTotalPages = raw.total_pages || 50;
+
                 var valid = [];
                 for(var j=0; j<raw.results.length; j++) {
                     var m = raw.results[j];
+                    if (!m || !m.id) continue;
+                    if (_renderedRecIds.has(String(m.id))) continue; // skip already-shown
                     var info = tmdbMap[m.id];
                     if (info && info.played) continue;
                     if (info) { m.isAvailable = true; m.jellyfinId = info.id; m.isWatchlisted = info.isWatchlisted; }
@@ -1258,8 +1263,12 @@
                 }
                 Array.prototype.push.apply(_tmdbRecBuffer, valid);
                 _tmdbRecPage++;
+
+                // Stop early if we already have enough unique items
+                if (_tmdbRecBuffer.length >= fetchTarget) break;
             }
         }
+
 
         if (rowRec) {
             if (isSetup(rec)) { rowRec.innerHTML = SETUP_HTML; }
