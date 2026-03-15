@@ -29,6 +29,8 @@ public class PluginConfiguration : BasePluginConfiguration
         OmdbApiKey = string.Empty;
         JellyseerrUrl = string.Empty;
         JellyseerrApiKey = string.Empty;
+        JellyfinLocalUrl = "http://localhost:8096";
+        JellyfinLocalApiKey = string.Empty;
         StreamBaseUrl = "https://stream.hulksmash.ca/movie/";
         NavPlacement = NavPlacement.Sidebar;
         ShowUpcomingSection = true;
@@ -83,4 +85,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets a value indicating whether the KefinTweaks Watchlist section is visible.
     /// </summary>
     public bool ShowWatchlistSection { get; set; }
+
+    /// <summary>
+    /// Gets or sets the local Jellyfin URL used for server-side API calls (e.g. auto-watchlist).
+    /// Usually http://localhost:8096. Must be reachable from within the Jellyfin server process.
+    /// </summary>
+    public string JellyfinLocalUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets an admin API key for the local Jellyfin server.
+    /// Used to add movies to users' watchlists when a requested movie becomes available.
+    /// Generate one in Jellyfin Dashboard → API Keys.
+    /// </summary>
+    public string JellyfinLocalApiKey { get; set; }
 }

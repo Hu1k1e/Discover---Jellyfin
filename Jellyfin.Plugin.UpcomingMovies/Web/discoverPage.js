@@ -347,6 +347,22 @@
             .dcm-status { padding: 8px 20px; font-size: 0.87em; color: #aaa; text-align: center; min-height: 28px; }
             .dcm-status.error { color: #ef5350; }
             .dcm-status.success { color: #00C853; }
+
+            /* ── Watchlist bookmark banner ── */
+            .dc-watchlist-btn {
+                position: absolute; top: 7px; left: 7px;
+                width: 30px; height: 36px;
+                background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px);
+                border: none; border-radius: 4px;
+                cursor: pointer; z-index: 3;
+                display: flex; align-items: center; justify-content: center;
+                transition: background 0.18s, transform 0.18s;
+                padding: 0;
+            }
+            .dc-watchlist-btn:hover { background: rgba(0, 200, 83, 0.85); transform: scale(1.1); }
+            .dc-watchlist-btn svg { width: 16px; height: 16px; fill: #fff; transition: fill 0.18s; }
+            .dc-watchlist-btn.active { background: rgba(0, 200, 83, 0.9); }
+            .dc-watchlist-btn.active svg { fill: #fff; }
         `;
         document.head.appendChild(style);
     }
@@ -675,6 +691,42 @@
 
     var PLAY_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 5v14l11-7z"/></svg>';
 
+    // Bookmark SVG — outline when not watchlisted, filled when active
+    var WL_SVG_OFF = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/></svg>';
+    var WL_SVG_ON  = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>';
+
+    // ── Watchlist API helper ──
+    async function addToWatchlist(jellyfinId) {
+        var client = window.ApiClient;
+        if (!client) return;
+        var server = client._serverAddress;
+        var token  = client.accessToken ? client.accessToken() : '';
+        try {
+            var res = await fetch(server + '/UserWatchlistItems/' + jellyfinId, {
+                method: 'POST',
+                headers: { 'X-Emby-Token': token }
+            });
+            if (!res.ok) WARN('[Watchlist] POST failed:', res.status);
+        } catch (err) {
+            WARN('[Watchlist] network error:', err);
+        }
+    }
+
+    async function removeFromWatchlist(jellyfinId) {
+        var client = window.ApiClient;
+        if (!client) return;
+        var server = client._serverAddress;
+        var token  = client.accessToken ? client.accessToken() : '';
+        try {
+            await fetch(server + '/UserWatchlistItems/' + jellyfinId, {
+                method: 'DELETE',
+                headers: { 'X-Emby-Token': token }
+            });
+        } catch (err) {
+            WARN('[Watchlist] DELETE network error:', err);
+        }
+    }
+
     var SETUP_HTML = '<div class="discover-error">'
         + '&#9888;&#65039; <strong>TMDB API key not configured.</strong><br>'
         + 'Go to <strong>Dashboard &rarr; Plugins &rarr; Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>'
@@ -882,6 +934,8 @@
         var jellyfinId   = opts.jellyfinId;
         var vote         = opts.voteAverage ? opts.voteAverage.toFixed(1) : '';
 
+        var isWatchlisted = !!opts.isWatchlisted;
+
         var card = document.createElement('div');
         card.className = 'discover-card' + (isUpcoming ? ' upcoming-card' : '');
         // Only natively linkable items get hover scale
@@ -925,10 +979,21 @@
 
         var badgeHtml = vote && vote > 0 ? '<div class="dc-star-badge">' + STAR_SVG + vote + '</div>' : '';
 
+        // Bookmark banner — only for available movies (jellyfinId known)
+        var watchlistHtml = '';
+        if (!isUpcoming && isAvailable && jellyfinId) {
+            watchlistHtml = '<button class="dc-watchlist-btn' + (isWatchlisted ? ' active' : '') + '"'
+                + ' title="' + (isWatchlisted ? 'Remove from Watchlist' : 'Add to Watchlist') + '"'
+                + ' data-jellyfin-id="' + jellyfinId + '">'
+                + (isWatchlisted ? WL_SVG_ON : WL_SVG_OFF)
+                + '</button>';
+        }
+
         card.innerHTML =
             '<div class="dc-poster">'
             + posterHtml
             + badgeHtml
+            + watchlistHtml
             + playHtml
             + '</div>'
             + '<div class="dc-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
@@ -959,6 +1024,28 @@
             e.stopPropagation();
             openRequestModal(e.currentTarget.dataset.tmdb, title, backdropUrl);
         });
+
+        // Watchlist bookmark toggle
+        var btnWL = card.querySelector('.dc-watchlist-btn');
+        if (btnWL) {
+            btnWL.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                var isNowActive = btnWL.classList.contains('active');
+                if (isNowActive) {
+                    // Toggle off — remove from watchlist
+                    btnWL.classList.remove('active');
+                    btnWL.innerHTML = WL_SVG_OFF;
+                    btnWL.title = 'Add to Watchlist';
+                    await removeFromWatchlist(jellyfinId);
+                } else {
+                    // Toggle on — add to watchlist
+                    btnWL.classList.add('active');
+                    btnWL.innerHTML = WL_SVG_ON;
+                    btnWL.title = 'Remove from Watchlist';
+                    await addToWatchlist(jellyfinId);
+                }
+            });
+        }
 
         // Stream button → stream info modal
         var btnStream = card.querySelector('.btn-stream');
@@ -1101,7 +1188,11 @@
                     (allData.Items || []).forEach(function(item) {
                         var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
                         if (tid) {
-                            tmdbMap[tid] = { id: item.Id, played: item.UserData && item.UserData.Played };
+                            tmdbMap[tid] = {
+                                id: item.Id,
+                                played: item.UserData && item.UserData.Played,
+                                isWatchlisted: !!(item.UserData && item.UserData.IsWatchlisted)
+                            };
                         }
                     });
 
@@ -1114,6 +1205,7 @@
                         if (localInfo) {
                             m.isAvailable = true;
                             m.jellyfinId = localInfo.id;
+                            m.isWatchlisted = localInfo.isWatchlisted;
                         }
                         validRecs.push(m);
                     }
@@ -1149,7 +1241,7 @@
                     var m = raw.results[j];
                     var info = tmdbMap[m.id];
                     if (info && info.played) continue;
-                    if (info) { m.isAvailable = true; m.jellyfinId = info.id; }
+                    if (info) { m.isAvailable = true; m.jellyfinId = info.id; m.isWatchlisted = info.isWatchlisted; }
                     valid.push(m);
                 }
                 Array.prototype.push.apply(_tmdbRecBuffer, valid);

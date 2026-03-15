@@ -100,6 +100,28 @@
                         </div>
                     </div>
 
+                    <h2>Auto-Watchlist <em style="font-size:0.75em;font-weight:normal;color:#aaa;">(optional)</em></h2>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="JellyfinLocalUrl">Jellyfin Local URL</label>
+                        <input id="JellyfinLocalUrl" name="JellyfinLocalUrl" type="url" is="emby-input"
+                               placeholder="http://localhost:8096" />
+                        <div class="fieldDescription">
+                            Internal URL where this Jellyfin server is reachable (used for server-to-server watchlist calls).
+                            Usually <code>http://localhost:8096</code>.
+                        </div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="JellyfinLocalApiKey">Jellyfin Admin API Key</label>
+                        <input id="JellyfinLocalApiKey" name="JellyfinLocalApiKey" type="password" is="emby-input" autocomplete="off" />
+                        <div class="fieldDescription">
+                            An admin API key for this Jellyfin server.
+                            Generate one in <strong>Dashboard &rarr; API Keys</strong>.
+                            Required to auto-add movies to a user&rsquo;s watchlist when a requested movie becomes available.
+                        </div>
+                    </div>
+
                     <div style="margin-top: 2em;">
                         <button is="emby-button" type="submit" class="raised button-submit block emby-button">
                             <span>Save</span>
@@ -128,6 +150,8 @@
                         document.querySelector('#ShowUpcomingSection').checked        = config.ShowUpcomingSection !== false;
                         document.querySelector('#ShowRecommendationsSection').checked = config.ShowRecommendationsSection !== false;
                         document.querySelector('#ShowWatchlistSection').checked       = config.ShowWatchlistSection !== false;
+                        document.querySelector('#JellyfinLocalUrl').value             = config.JellyfinLocalUrl || 'http://localhost:8096';
+                        document.querySelector('#JellyfinLocalApiKey').value          = config.JellyfinLocalApiKey || '';
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -145,6 +169,8 @@
                         config.ShowUpcomingSection         = document.querySelector('#ShowUpcomingSection').checked;
                         config.ShowRecommendationsSection  = document.querySelector('#ShowRecommendationsSection').checked;
                         config.ShowWatchlistSection        = document.querySelector('#ShowWatchlistSection').checked;
+                        config.JellyfinLocalUrl            = document.querySelector('#JellyfinLocalUrl').value;
+                        config.JellyfinLocalApiKey         = document.querySelector('#JellyfinLocalApiKey').value;
 
                         ApiClient.updatePluginConfiguration(UpcomingMoviesConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
