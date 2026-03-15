@@ -695,22 +695,24 @@
     var WL_SVG_OFF = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z"/></svg>';
     var WL_SVG_ON  = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>';
 
-    // ── Watchlist API helper (uses Jellyfin Likes = KefinTweaks Watchlist) ──
-    // KefinTweaks watchlist stores items as UserData.Likes = true
-    // The Jellyfin REST API is /Users/{uid}/LikedItems/{id} (POST=add, DELETE=remove).
-    // Auth must use X-Emby-Authorization with full MediaBrowser Token format.
+    // ── Watchlist API helper (uses Jellyfin UserData.Likes = KefinTweaks Watchlist) ──
+    // Confirmed from swiparr JellyfinProvider.toggleWatchlist:
+    //   POST /Users/{uid}/Items/{id}/Rating?Likes=true  → add to watchlist
+    //   POST /Users/{uid}/Items/{id}/Rating?Likes=false → remove from watchlist
+    // Header must be 'Authorization' (not 'X-Emby-Authorization') per Jellyfin API spec.
     async function addToWatchlist(jellyfinId) {
         var client = window.ApiClient;
         if (!client) return;
         var server = client.serverAddress ? client.serverAddress() : '';
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
-        if (!uid || !server) return;
+        var token  = client.accessToken ? client.accessToken() : '';
+        if (!uid || !server || !token) return;
         try {
-            var res = await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
+            var res = await fetch(server + '/Users/' + uid + '/Items/' + jellyfinId + '/Rating?Likes=true', {
                 method: 'POST',
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                headers: { 'Authorization': 'MediaBrowser Token="' + token + '"' }
             });
-            if (!res.ok) WARN('[Watchlist] POST LikedItems failed:', res.status, await res.text());
+            if (!res.ok) WARN('[Watchlist] POST Rating?Likes=true failed:', res.status, await res.text());
             else LOG('[Watchlist] Added to watchlist:', jellyfinId);
         } catch (err) {
             WARN('[Watchlist] network error adding to watchlist:', err);
@@ -722,13 +724,14 @@
         if (!client) return;
         var server = client.serverAddress ? client.serverAddress() : '';
         var uid    = client.getCurrentUserId ? client.getCurrentUserId() : '';
-        if (!uid || !server) return;
+        var token  = client.accessToken ? client.accessToken() : '';
+        if (!uid || !server || !token) return;
         try {
-            var res = await fetch(server + '/Users/' + uid + '/LikedItems/' + jellyfinId, {
-                method: 'DELETE',
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+            var res = await fetch(server + '/Users/' + uid + '/Items/' + jellyfinId + '/Rating?Likes=false', {
+                method: 'POST',
+                headers: { 'Authorization': 'MediaBrowser Token="' + token + '"' }
             });
-            if (!res.ok) WARN('[Watchlist] DELETE LikedItems failed:', res.status, await res.text());
+            if (!res.ok) WARN('[Watchlist] POST Rating?Likes=false failed:', res.status, await res.text());
             else LOG('[Watchlist] Removed from watchlist:', jellyfinId);
         } catch (err) {
             WARN('[Watchlist] network error removing from watchlist:', err);
