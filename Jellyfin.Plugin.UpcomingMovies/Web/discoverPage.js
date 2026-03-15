@@ -541,8 +541,14 @@
                 tmdbId: parseInt(tmdbId, 10),
                 mediaType: 'movie'
             };
-            if (serverSel) body.serverId = parseInt(serverSel.value, 10) || undefined;
-            if (profileSel && profileSel.value) body.profileId = parseInt(profileSel.value, 10) || undefined;
+            if (serverSel && serverSel.value) {
+                var sId = parseInt(serverSel.value, 10);
+                if (!isNaN(sId)) body.serverId = sId;
+            }
+            if (profileSel && profileSel.value) {
+                var pId = parseInt(profileSel.value, 10);
+                if (!isNaN(pId)) body.profileId = pId;
+            }
             if (rootSel && rootSel.value) body.rootFolder = rootSel.value;
 
             try {
@@ -601,15 +607,23 @@
         var streamBaseUrl = opts.streamBaseUrl || '';
         var isUpcoming   = !!opts.isUpcoming;
         var isAvailable  = !!opts.isAvailable;
+        var jellyfinId   = opts.jellyfinId;
 
         var card = document.createElement('div');
         card.className = 'discover-card' + (isUpcoming ? ' upcoming-card' : '');
 
         var actionsHtml = '';
-        if (!isUpcoming && isAvailable && jellyfinId) {
-            actionsHtml += '<button class="btnPlay detailButton btn-play" data-jellyfin="' + jellyfinId + '" style="background:#00C853; color:#fff; display:flex; justify-content:center; align-items:center; gap:6px;">' + PLAY_SVG + 'Play</button>';
+        if (!isUpcoming) {
+            if (isAvailable && jellyfinId) {
+                actionsHtml += '<button class="btnPlay detailButton btn-play" data-jellyfin="' + jellyfinId + '" style="background:#00C853; color:#fff; display:flex; justify-content:center; align-items:center; gap:6px;">' + PLAY_SVG + 'Play</button>';
+            } else if (tmdbId) {
+                actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
+                if (streamBaseUrl) {
+                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream" style="display:block; text-align:center; text-decoration:none; background:#00C853; color:#fff; padding:8px; border-radius:8px; font-weight:600; font-size:14px; margin-top:5px;">Stream</a>';
+                }
+            }
         } else if (tmdbId) {
-            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
         }
 
         var posterHtml = posterUrl
@@ -623,7 +637,7 @@
             + (actionsHtml ? '<div class="dc-actions">' + actionsHtml + '</div>' : '')
             + '</div>'
             + '<div class="dc-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
-            + (date ? '<div class="dc-date">' + date + '</div>' : '');
+            + (isUpcoming && date ? '<div class="dc-date">' + date + '</div>' : '');
 
         // Whole-card click → Jellyfin detail (for Jellyfin native items)
         if (!isUpcoming) {

@@ -147,11 +147,20 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Empty Recommendations | Fixed `discoverPage.js` algorithm which was separating Top Genres using a comma (TMDB interpretation: AND) instead of a pipe `|` (TMDB interpretation: OR). This caused the algorithm to filter out 99% of movies instead of broadening the net based on Watch History. |
 | Obscure Upcoming | Refined the TMDB Upcoming endpoint parameters in `TmdbController.cs` to enforce Hollywood blockbusters: added `with_original_language=en`, `region=US`, and `sort_by=popularity.desc`. |
 
+## Phase 11 — Final UI and Server Bug Fixes (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| ServerId NaN Error | When "Default" Server/Profile was selected in the Jellyseerr modal, the empty string `""` was parsed as `NaN` and caused a strict type validation error in Jellyseerr. Updated `discoverPage.js` to only cast and assign `serverId` / `profileId` if the cast yields a valid integer. |
+| Unwanted Dates on Recs | Recommended cards were displaying release dates like `2008-07-16` similar to Upcoming cards. Updated the rendering logic to conditionally output the date block only if `isUpcoming` is true, ensuring Recommended cards match native Jellyfin styles cleanly. |
+| Jellyfin ID Missing | The `buildCard` options unpacker in `discoverPage.js` was completely missing the `var jellyfinId = opts.jellyfinId;` declaration. Thus, the JS engine treated `jellyfinId` as globally undefined, breaking the check that determines if a movie is locally available (causing Request buttons to appear unnecessarily) and breaking the click-to-play hyperlink. Declared it so Play buttons work flawlessly. |
+| Missing Stream Button | Restored the "Stream" button fallback inside the Recommended engine. If a recommended movie is *not* locally available on Jellyfin, the card now displays both a **Request** (Purple) and **Stream** (Green) button, giving users flexible options. Upcoming cards remain strictly **Request** only. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.16** — Phase 10 completed (Root Folders, Algorithm & Upcoming Improvements).
+**Latest Release: v1.0.17** — Phase 11 completed (NaN fixes, Date layout, Jellyfin ID declared, Stream button restored).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
