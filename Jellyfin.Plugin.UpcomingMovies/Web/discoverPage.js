@@ -74,12 +74,18 @@
             }
             .discover-row {
                 display: flex;
-                overflow: hidden;     /* NO scroll bar — drag or arrows only */
-                gap: 12px;
-                padding: 4px 3% 14px 3%;
+                overflow: hidden;
+                gap: 16px;
+                padding: 4px 1% 14px 1%;
                 cursor: grab;
                 user-select: none;
                 -webkit-user-select: none;
+            }
+            .discover-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 16px;
+                padding: 4px 1% 14px 1%;
             }
             .discover-row.dragging { cursor: grabbing; }
 
@@ -109,23 +115,26 @@
 
             /* ── Card ── */
             .discover-card {
-                display: inline-flex; flex-direction: column;
+                display: flex; flex-direction: column;
                 flex: 0 0 auto;
                 width: 150px;
-                border-radius: 4px;
-                overflow: hidden;
+                overflow: visible;
                 scroll-snap-align: start;
-                transition: transform 0.2s ease, box-shadow 0.2s ease;
-                background: rgba(255,255,255,0.04);
                 user-select: none;
             }
-            .discover-card:hover { transform: scale(1.04); box-shadow: 0 8px 24px rgba(0,0,0,0.6); }
+            .discover-grid .discover-card {
+                width: 100%;
+            }
 
             /* ── Poster wrapper ── */
             .discover-card .dc-poster {
-                position: relative; width: 150px; height: 225px;
+                position: relative; width: 100%; aspect-ratio: 2/3;
+                border-radius: 8px;
                 overflow: hidden; background: #111; flex-shrink: 0;
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
             }
+            .discover-card.hover-enabled:hover .dc-poster { transform: scale(1.04); box-shadow: 0 8px 24px rgba(0,0,0,0.6); cursor: pointer; }
             .discover-card .dc-poster img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
             .dc-no-poster {
                 width: 100%; height: 100%;
@@ -133,16 +142,25 @@
                 background: #1a1a2e; color: #888; font-size: 2em;
             }
 
-            /* ── Hover overlay: dark + centered play circle (Recommended/Stream cards) ── */
+            /* ── Star Badge ── */
+            .dc-star-badge {
+                position: absolute; top: 6px; right: 6px;
+                background: rgba(10,10,10,0.85); color: #fff;
+                font-size: 0.8em; font-weight: 700;
+                padding: 3px 6px; border-radius: 4px;
+                display: flex; align-items: center; gap: 4px;
+                z-index: 2; pointer-events: none;
+            }
+            .dc-star-badge svg { width: 12px; height: 12px; fill: #ffc107; }
+
+            /* ── Hover overlay: dark + centered play circle ── */
             .dc-overlay {
                 position: absolute; inset: 0;
                 background: rgba(0,0,0,0.52);
                 display: flex; align-items: center; justify-content: center;
-                opacity: 0; transition: opacity 0.18s ease;
+                opacity: 0; transition: opacity 0.18s ease; z-index: 1;
             }
-            .discover-card:hover .dc-overlay { opacity: 1; }
-            /* Upcoming cards: light overlay only, no centered play button */
-            .discover-card.upcoming-card:hover .dc-overlay { background: rgba(0,0,0,0.38); }
+            .discover-card.hover-enabled:hover .dc-overlay { opacity: 1; }
 
             .dc-play-btn {
                 width: 48px; height: 48px; border-radius: 50%;
@@ -155,25 +173,25 @@
             /* Hide play button for upcoming cards */
             .discover-card.upcoming-card .dc-play-btn { display: none; }
 
-            /* ── Bottom action bar ── */
-            .dc-actions {
-                position: absolute; bottom: 0; left: 0; right: 0;
-                padding: 10px; display: flex; flex-direction: column; gap: 5px;
-                background: linear-gradient(transparent, rgba(0,0,0,0.95));
-                opacity: 0; transition: opacity 0.18s ease;
-            }
-            .discover-card:hover .dc-actions { opacity: 1; }
-            /* The buttons themselves will pick up rules from Jellyfin CSS.md, but we provide base fallbacks just in case */
-            .dc-actions button {
-                width: 100%; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; padding: 8px; font-size: 14px;
-            }
-
-            /* ── Card meta ── */
+            /* ── Card meta (Title below poster) ── */
             .dc-title {
-                padding: 6px 7px 2px 7px; font-size: 0.84em; font-weight: 500;
-                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e0e0e0;
+                margin-top: 8px; font-size: 0.9em; font-weight: 500;
+                text-align: center; color: #fff;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px;
             }
-            .dc-date { padding: 0 7px 7px 7px; font-size: 0.77em; color: #888; }
+            .dc-date { text-align: center; font-size: 0.77em; color: #aaa; margin-top: 2px; }
+
+            /* ── Button Bar (Below Title) ── */
+            .dc-action-bar {
+                display: flex; flex-direction: column; gap: 6px;
+                margin-top: 8px; padding: 0 4px;
+            }
+            .dc-action-bar button, .dc-action-bar a {
+                width: 100%; border-radius: 5px; font-weight: 600; cursor: pointer; border: none; padding: 7px; font-size: 13px;
+                text-align: center; text-decoration: none; transition: opacity 0.2s;
+            }
+            .dc-action-bar button:hover, .dc-action-bar a:hover { opacity: 0.85; }
+            .dc-action-bar button:disabled { opacity: 1 !important; cursor: default; }
 
             .discover-loading { padding: 14px 5%; color: #999; font-style: italic; }
             .discover-error   { padding: 14px 5%; color: #ef5350; line-height: 1.7; }
@@ -240,7 +258,16 @@
     // 4. HTML TEMPLATE
     // ─────────────────────────────────────────────
 
-    function buildSectionHtml(id, title) {
+    function buildSectionHtml(id, title, isGrid) {
+        if (isGrid) {
+            return '<div class="discover-section" data-section="' + id + '">'
+                + '<h2 class="discover-section-title">' + title + '</h2>'
+                + '<div class="discover-grid" data-row="' + id + '">'
+                + '  <div class="discover-loading">Loading&hellip;</div>'
+                + '</div>'
+                + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background:#00c2ff; color:#000; display:none;">Discover More</button></div>'
+                + '</div>';
+        }
         return '<div class="discover-section" data-section="' + id + '">'
             + '<h2 class="discover-section-title">' + title + '</h2>'
             + '<div class="discover-row-wrap">'
@@ -254,8 +281,8 @@
 
     function getGridTemplate() {
         return '<div class="discover-page-content">'
-            + buildSectionHtml('upcoming', 'Upcoming Movies')
-            + buildSectionHtml('recommended', 'Recommended For You')
+            + buildSectionHtml('upcoming', 'Upcoming Movies', false)
+            + buildSectionHtml('recommended', 'Recommended For You', true)
             + '</div>';
     }
 
@@ -357,7 +384,8 @@
     }
 
     // Build the user signal profile from Jellyfin APIs and call the backend recommendations endpoint
-    async function fetchRecommendations() {
+    async function fetchRecommendations(page) {
+        page = page || 1;
         var client = window.ApiClient;
         var userId = client && client.getCurrentUserId();
         var tmdbIds   = [];
@@ -420,6 +448,7 @@
         var params = [];
         if (seedIds) params.push('tmdbIds=' + encodeURIComponent(seedIds));
         if (topGenres) params.push('genreIds=' + encodeURIComponent(topGenres));
+        params.push('page=' + page);
         var qs = params.length ? '?' + params.join('&') : '';
 
         var res = await fetch('/UpcomingMovies/tmdb/recommendations' + qs, {
@@ -564,6 +593,14 @@
                 if (res.ok) {
                     statusEl.textContent = '\u2713 Requested successfully!';
                     statusEl.className = 'dcm-status success';
+                    // Update button on the UI
+                    var btn = document.querySelector('.btn-request[data-tmdb="' + tmdbId + '"]');
+                    if (btn) {
+                        btn.innerHTML = '&#10003; Requested';
+                        btn.style.background = '#4a4a4a';
+                        btn.style.color = '#fff';
+                        btn.disabled = true;
+                    }
                     setTimeout(close, 1600);
                 } else {
                     var errData = await res.json().catch(function() { return {}; });
@@ -591,12 +628,15 @@
         + '<a href="#/configurationpage?name=Upcoming Movies %26 Recommendations" style="color:#90caf9">Open Plugin Settings &rarr;</a>'
         + '</div>';
 
+    var STAR_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+
     /**
      * Build a card element.
      * @param {Object} opts
      *   tmdbId, title, posterUrl, backdropUrl, date, streamBaseUrl,
-     *   isUpcoming {bool} — if true: only Request button, no play-circle click
-     *   jellyfinId — if set: navigate to Jellyfin detail
+     *   isUpcoming {bool}
+     *   jellyfinId {string}
+     *   voteAverage {number}
      */
     function buildCard(opts) {
         var tmdbId       = opts.tmdbId;
@@ -608,21 +648,29 @@
         var isUpcoming   = !!opts.isUpcoming;
         var isAvailable  = !!opts.isAvailable;
         var jellyfinId   = opts.jellyfinId;
+        var vote         = opts.voteAverage ? opts.voteAverage.toFixed(1) : '';
 
         var card = document.createElement('div');
         card.className = 'discover-card' + (isUpcoming ? ' upcoming-card' : '');
+        // Only natively linkable items get hover scale
+        if (!isUpcoming && isAvailable) card.className += ' hover-enabled';
 
         var actionsHtml = '';
+        var playHtml = '';
+
         if (!isUpcoming) {
             if (isAvailable && jellyfinId) {
-                actionsHtml += '<button class="btnPlay detailButton btn-play" data-jellyfin="' + jellyfinId + '" style="background:#00C853; color:#fff; display:flex; justify-content:center; align-items:center; gap:6px;">' + PLAY_SVG + 'Play</button>';
+                // Native Jellyfin Card behavior: No block buttons. Just the hidden hover play overlay.
+                playHtml = '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>';
             } else if (tmdbId) {
+                // Unavailable Rec: Show Request and Stream buttons below the title
                 actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
                 if (streamBaseUrl) {
-                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream" style="display:block; text-align:center; text-decoration:none; background:#00C853; color:#fff; padding:8px; border-radius:8px; font-weight:600; font-size:14px; margin-top:5px;">Stream</a>';
+                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream" style="background:#00C853; color:#fff;">Stream</a>';
                 }
             }
         } else if (tmdbId) {
+            // Upcoming: Just Request block button
             actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '" style="background:#7B5EA7; color:#fff;">Request</button>';
         }
 
@@ -630,19 +678,21 @@
             ? '<img src="' + escapeHtml(posterUrl) + '" alt="' + escapeHtml(title) + '" loading="lazy" />'
             : '<div class="dc-no-poster">\uD83C\uDFAC</div>';
 
+        var badgeHtml = vote && vote > 0 ? '<div class="dc-star-badge">' + STAR_SVG + vote + '</div>' : '';
+
         card.innerHTML =
             '<div class="dc-poster">'
             + posterHtml
-            + '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>'
-            + (actionsHtml ? '<div class="dc-actions">' + actionsHtml + '</div>' : '')
+            + badgeHtml
+            + playHtml
             + '</div>'
             + '<div class="dc-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div>'
-            + (isUpcoming && date ? '<div class="dc-date">' + date + '</div>' : '');
+            + (isUpcoming && date ? '<div class="dc-date">' + date + '</div>' : '')
+            + (actionsHtml ? '<div class="dc-action-bar">' + actionsHtml + '</div>' : '');
 
-        // Whole-card click → Jellyfin detail (for Jellyfin native items)
-        if (!isUpcoming) {
-            card.addEventListener('click', function(e) {
-                if (e.target.closest('button')) return;
+        // Whole-card click → Jellyfin detail (for Native items only)
+        if (!isUpcoming && isAvailable) {
+            card.querySelector('.dc-poster').addEventListener('click', function(e) {
                 if (jellyfinId) window.location.hash = '#/details?id=' + jellyfinId;
             });
         }
@@ -668,10 +718,10 @@
     // 9. RENDERING
     // ─────────────────────────────────────────────
 
-    function renderTmdbCards(movies, containerEl, streamBaseUrl, isUpcoming) {
-        containerEl.innerHTML = '';
+    function renderTmdbCards(movies, containerEl, streamBaseUrl, isUpcoming, isAppend) {
+        if (!isAppend) containerEl.innerHTML = '';
         if (!movies || movies.length === 0) {
-            containerEl.innerHTML = '<div class="discover-loading">No items found.</div>';
+            if (!isAppend) containerEl.innerHTML = '<div class="discover-loading">No items found.</div>';
             return;
         }
         movies.forEach(function(movie) {
@@ -686,7 +736,8 @@
                 streamBaseUrl: streamBaseUrl,
                 isUpcoming:   !!isUpcoming,
                 isAvailable:  movie.isAvailable,
-                jellyfinId:   movie.jellyfinId
+                jellyfinId:   movie.jellyfinId,
+                voteAverage:  movie.vote_average
             }));
         });
     }
@@ -738,7 +789,7 @@
                 var server = client._serverAddress;
                 var token  = client.accessToken();
                 var allRes = await fetch(
-                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Recursive=true&Fields=ProviderIds',
+                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Recursive=true&Fields=ProviderIds,UserData',
                     { headers: { 'X-Emby-Token': token } }
                 );
                 if (allRes.ok) {
@@ -746,13 +797,20 @@
                     var tmdbMap = {};
                     (allData.Items || []).forEach(function(item) {
                         var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
-                        if (tid) tmdbMap[tid] = item.Id;
-                    });
-                    rec.results.forEach(function(movie) {
-                        if (tmdbMap[movie.id]) {
-                            movie.isAvailable = true;
-                            movie.jellyfinId = tmdbMap[movie.id];
+                        if (tid) {
+                            tmdbMap[tid] = { id: item.Id, played: item.UserData && item.UserData.Played };
                         }
+                    });
+
+                    // Filter out already watched movies from recommendations
+                    rec.results = rec.results.filter(function(movie) {
+                        var localInfo = tmdbMap[movie.id];
+                        if (localInfo && localInfo.played) return false; // Hide completely
+                        if (localInfo) {
+                            movie.isAvailable = true;
+                            movie.jellyfinId = localInfo.id;
+                        }
+                        return true;
                     });
                 }
             } catch (err) {
@@ -766,41 +824,155 @@
             else              { rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
 
+        var recPage = 1;
+        var btnMore = containerDiv.querySelector('.btn-discover-more');
+
         if (rowRec) {
             if (isSetup(rec)) { rowRec.innerHTML = SETUP_HTML; }
-            else if (rec)     { renderTmdbCards(rec.results, rowRec, streamBaseUrl, false); }
-            else              { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
+            else if (rec) {
+                renderTmdbCards(rec.results, rowRec, streamBaseUrl, false, false);
+                if (btnMore && rec.page < rec.total_pages) {
+                    btnMore.style.display = 'inline-block';
+                    btnMore.addEventListener('click', async function() {
+                        btnMore.textContent = 'Loading...';
+                        recPage++;
+                        try {
+                            var moreRecs = await fetchRecommendations(recPage);
+                            if (moreRecs && moreRecs.results) {
+                                // Filter out watched items again for pagination
+                                if (tmdbMap) {
+                                  moreRecs.results = moreRecs.results.filter(function(m) {
+                                      var info = tmdbMap[m.id];
+                                      if (info && info.played) return false;
+                                      if (info) {
+                                          m.isAvailable = true;
+                                          m.jellyfinId = info.id;
+                                      }
+                                      return true;
+                                  });
+                                }
+                                renderTmdbCards(moreRecs.results, rowRec, streamBaseUrl, false, true);
+                            }
+                            if (!moreRecs || recPage >= moreRecs.total_pages) btnMore.style.display = 'none';
+                            else btnMore.textContent = 'Discover More';
+                        } catch (err) {
+                            btnMore.textContent = 'Error Loading. Try Again';
+                        }
+                    });
+                }
+            }
+            else { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
 
         _renderingContainers.delete(containerDiv);
     }
 
-    // ── INTEGRATION HOOKS ──
+    // ── INTEGRATION HOOKS & NATIVE INJECTION ──
+
+    // Helper: Mount the Discover UI natively, replacing the active Jellyfin view
+    function mountNativeDiscoverView() {
+        var page = document.querySelector('.page:not(.hide)');
+        if (!page) return;
+
+        // Clear existing Jellyfin content and inject ours
+        var contentTarget = page.querySelector('.content-primary') || page;
+        contentTarget.innerHTML = '';
+        var injectWrapper = document.createElement('div');
+        injectWrapper.className = 'upcoming-movies-plugin';
+        contentTarget.appendChild(injectWrapper);
+
+        // Update Jellyfin's page title natively
+        var titleEl = document.querySelector('.pageTitleWithDefaultLogo');
+        if (titleEl) titleEl.textContent = 'Discover';
+        else {
+            var logo = document.querySelector('.pageTitleWithLogo');
+            if (logo) logo.style.backgroundImage = 'none';
+            if (logo) logo.textContent = 'Discover';
+        }
+
+        populateDiscoverContainer(injectWrapper);
+    }
+
+    // Inject Navigation dynamically based on NavPlacement configuration
+    async function injectNativeNavigation() {
+        if (window._discoverNavInjected) return;
+        var config = await fetchPluginConfig();
+        var placement = config.navPlacement || 'Sidebar';
+
+        if (placement === 'Header') {
+            // Wait for header tabs to render
+            var interval = setInterval(function() {
+                var tabContainer = document.querySelector('.headerTabs');
+                if (tabContainer && !tabContainer.querySelector('.discover-header-tab')) {
+                    clearInterval(interval);
+                    var tabBtn = document.createElement('button');
+                    tabBtn.className = 'emby-tab-button focuscontainer-x emby-button discover-header-tab';
+                    tabBtn.innerHTML = '<div class="emby-button-foreground"><span class="emby-tab-button-inner">Discover</span></div>';
+                    tabBtn.addEventListener('click', function() {
+                        // Deactivate other tabs visually
+                        tabContainer.querySelectorAll('.emby-tab-button').forEach(t => t.classList.remove('emby-tab-button-active'));
+                        tabBtn.classList.add('emby-tab-button-active');
+                        window.location.hash = '#/home?tab=discover';
+                        mountNativeDiscoverView();
+                    });
+                    tabContainer.appendChild(tabBtn);
+                    window._discoverNavInjected = true;
+                }
+            }, 500);
+        } else {
+            // Sidebar Placement
+            var sbInterval = setInterval(function() {
+                var menu = document.querySelector('.navMenu');
+                if (menu && !menu.querySelector('.discover-sidebar-tab')) {
+                    clearInterval(sbInterval);
+                    var link = document.createElement('a');
+                    link.className = 'navMenuOption emby-button discover-sidebar-tab';
+                    link.title = 'Discover';
+                    link.innerHTML = '<span class="navMenuOptionIcon material-icons">explore</span><span class="navMenuOptionText">Discover</span>';
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        // Close sidebar drawer natively
+                        var drawer = document.querySelector('.appDrawer-open');
+                        if (drawer) drawer.classList.remove('appDrawer-open');
+                        window.location.hash = '#/discover';
+                        setTimeout(mountNativeDiscoverView, 50);
+                    });
+                    // Insert right after Home
+                    var homeLink = menu.querySelector('a[href="#/home"]');
+                    if (homeLink && homeLink.nextSibling) {
+                        menu.insertBefore(link, homeLink.nextSibling);
+                    } else {
+                        menu.appendChild(link);
+                    }
+                    window._discoverNavInjected = true;
+                }
+            }, 500);
+        }
+    }
 
     var observer = new MutationObserver(function() {
+        // Fallback for Custom Tabs method
         document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
             if (!el.hasAttribute('data-discover-initialized')) {
                 el.setAttribute('data-discover-initialized', 'true');
                 populateDiscoverContainer(el);
             }
         });
+        injectNativeNavigation();
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    ['pageshow', 'viewshow', 'viewbeforeshow'].forEach(function(evtName) {
-        document.addEventListener(evtName, function(e) {
-            if (e.target && e.target.id === 'DiscoverPage') {
-                var inner = e.target.querySelector('.content-primary');
-                if (inner && !inner.hasAttribute('data-discover-initialized')) {
-                    inner.setAttribute('data-discover-initialized', 'true');
-                    populateDiscoverContainer(inner);
-                }
+    ['pageshow', 'viewshow', 'viewbeforeshow', 'hashchange'].forEach(function(evtName) {
+        window.addEventListener(evtName, function() {
+            if (window.location.hash.includes('discover')) {
+                setTimeout(mountNativeDiscoverView, 100);
             }
         });
     });
 
     // ── INIT ──
     injectStyles();
+    injectNativeNavigation();
 
     setTimeout(function() {
         document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
@@ -811,5 +983,5 @@
         });
     }, 800);
 
-    LOG('discoverPage.js (Phase 8) loaded.');
+    LOG('discoverPage.js (Phase 12) loaded natively. Safari/Brave cross-origin tracker bugs bypassed.');
 })();

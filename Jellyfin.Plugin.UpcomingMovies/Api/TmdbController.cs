@@ -212,7 +212,8 @@ public class TmdbController : ControllerBase
             {
                 results = sorted,
                 total_results = sorted.Count,
-                page = page
+                page = page,
+                total_pages = 500
             });
 
             return Content(finalJson, "application/json");

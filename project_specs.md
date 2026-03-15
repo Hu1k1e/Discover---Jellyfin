@@ -147,20 +147,21 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Empty Recommendations | Fixed `discoverPage.js` algorithm which was separating Top Genres using a comma (TMDB interpretation: AND) instead of a pipe `|` (TMDB interpretation: OR). This caused the algorithm to filter out 99% of movies instead of broadening the net based on Watch History. |
 | Obscure Upcoming | Refined the TMDB Upcoming endpoint parameters in `TmdbController.cs` to enforce Hollywood blockbusters: added `with_original_language=en`, `region=US`, and `sort_by=popularity.desc`. |
 
-## Phase 11 — Final UI and Server Bug Fixes (2026-03-14) ✅
+## Phase 12 — UI Redesign, Infinite Grid, and Native Navigation (2026-03-14) ✅
 
 | Bug/Feature | Implementation |
 |-------------|----------------|
-| ServerId NaN Error | When "Default" Server/Profile was selected in the Jellyseerr modal, the empty string `""` was parsed as `NaN` and caused a strict type validation error in Jellyseerr. Updated `discoverPage.js` to only cast and assign `serverId` / `profileId` if the cast yields a valid integer. |
-| Unwanted Dates on Recs | Recommended cards were displaying release dates like `2008-07-16` similar to Upcoming cards. Updated the rendering logic to conditionally output the date block only if `isUpcoming` is true, ensuring Recommended cards match native Jellyfin styles cleanly. |
-| Jellyfin ID Missing | The `buildCard` options unpacker in `discoverPage.js` was completely missing the `var jellyfinId = opts.jellyfinId;` declaration. Thus, the JS engine treated `jellyfinId` as globally undefined, breaking the check that determines if a movie is locally available (causing Request buttons to appear unnecessarily) and breaking the click-to-play hyperlink. Declared it so Play buttons work flawlessly. |
-| Missing Stream Button | Restored the "Stream" button fallback inside the Recommended engine. If a recommended movie is *not* locally available on Jellyfin, the card now displays both a **Request** (Purple) and **Stream** (Green) button, giving users flexible options. Upcoming cards remain strictly **Request** only. |
+| Requested State Checkmark | Updated `discoverPage.js` Jellyseerr modal success handler to locate the corresponding card Request button on the DOM, change its HTML to `✓ Requested`, disable it, and turn the background grey. |
+| Native Card Redesign | Completely redesigned `.discover-card`. Added a new `.dc-star-badge` inside the poster. Native Jellyfin items now perfectly match default design (no block buttons below, only a hover play circle). Unavailable items moved the "Request" and "Stream" buttons to cleanly sit below the title text instead of overlaying the poster. |
+| Infinite Grid Scroll | Changed the Recommended section to native `display: grid`. Substantially updated `discoverPage.js` and `TmdbController.cs` to accept a `page` parameter. Implemented a "Discover More" button that fetches subsequent pages and seamlessly appends them to the grid. |
+| Watched Filter | Modified the Jellyfin `Items` API query in `discoverPage.js` to retrieve `UserData`. The recommendation array is now strictly filtered so `item.UserData.Played === true` items are completely hidden from the user's Discover page. |
+| Native Content Navigator | Completely bypassed the buggy "Custom Tabs" plugin injection. `discoverPage.js` now reads `NavPlacement` from settings and natively injects an `emby-button` into either the Sidebar or Header Tabs block directly via Javascript. This cleanly replaces the Jellyfin view without browser tracker/adblocker bugs breaking the Discover load. |
 
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.17** — Phase 11 completed (NaN fixes, Date layout, Jellyfin ID declared, Stream button restored).
+**Latest Release: v1.0.18** — Phase 12 completed (UI Redesign, Grid Layout, Native DOM Navigation NavPlacement).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
