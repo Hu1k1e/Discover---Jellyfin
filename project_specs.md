@@ -1062,4 +1062,37 @@ If Jellyfin does not show a new version, check:
 - ❌ Do NOT edit manifest.json without the correct MD5 checksum from the actual built ZIP
 
 ### Version Numbering Convention
-Current version: **1.0.52**. Next release: **1.0.53**. Always increment the third part by 1.
+Current version: **1.0.54**. Next release: **1.0.55**. Always increment the third part by 1.
+
+---
+
+## Phase 39 — Regional Language Profile Repair (2026-03-15) ✅
+
+**Release: v1.0.54**
+
+### Bug: Hindi/Malayalam Not in Recommendations Despite Being Watched
+
+**Root cause:** All profiles built before Phase 35 (v1.0.51) have corrupted `LanguageWeights` — every movie was recorded as `language = "en"` regardless of its actual language. A user who watched 50 Hindi movies accumulated `LanguageWeights["en"] += 250` but `LanguageWeights["hi"] = 0`. Source 9 (language-affinity) never fired for Hindi/Malayalam because their weights were exactly 0 (below the 0.5 threshold).
+
+Korean showed up because the user watched Korean movies **after** v1.0.51 was deployed, correctly accumulating `LanguageWeights["ko"]`.
+
+### Fix: `RepairLanguageWeightsIfNeededAsync` in `UserDataSavedConsumer`
+
+**Trigger:** Fires as a background task after each watch/watchlist event.
+
+**Guard:** Only runs when `sum(non-English LanguageWeights) < 5.0` (profile looks corrupted) AND user has ≥3 watched movies. Once repaired, never runs again.
+
+**Process:**
+1. Takes the last 30 `WatchedTmdbIds`
+2. Fetches their TMDB records in parallel (max 5 concurrent, rate-limited by `SemaphoreSlim`)
+3. Counts how many movies belong to each non-English language
+4. Sets `LanguageWeights[lang] = count × 5.0 × 0.4` (conservative, avoids decay overshoot)
+5. Saves the repaired profile
+
+**Example:** User watched 20 Hindi movies → `LanguageWeights["hi"] = 20 × 5.0 × 0.4 = 40.0` → NW(40) × 6.0 = big language score → Source 9 fires immediately.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/UserDataSavedConsumer.cs` | Added `RepairLanguageWeightsIfNeededAsync` — lazy profile repair from TMDB history |

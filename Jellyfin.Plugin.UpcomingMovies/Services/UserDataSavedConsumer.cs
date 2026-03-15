@@ -176,5 +176,107 @@ public class UserDataSavedConsumer
         {
             _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
         }
+
+        // ── Lazy profile language repair ──────────────────────────────────────────
+        // Profiles built before Phase 35 (v1.0.51) have all LanguageWeights incorrectly set to "en"
+        // because the consumer was hardcoded. This repair detects a corrupted profile (non-English
+        // weight < 5.0 = less than ~1 non-English watch equivalent) and rebuilds LanguageWeights
+        // from the actual TMDB data for the user's 30 most recent watched movies.
+        // The repair runs in the background; it will stop running once the profile is healthy.
+        _ = Task.Run(() => RepairLanguageWeightsIfNeededAsync(userId));
+    }
+
+    /// <summary>
+    /// Detects and repairs corrupted LanguageWeights caused by pre-Phase-35 code that
+    /// hardcoded all languages to "en". Fetches up to 30 recent WatchedTmdbIds from TMDB
+    /// in parallel (max 5 concurrent) to discover actual original_language values, then
+    /// adds the missing weights to the profile.
+    ///
+    /// Only runs when the non-English weight total is &lt; 5.0 AND the user has watched
+    /// at least 3 movies — covering the case where someone has watched many Hindi/Malayalam
+    /// films but zero non-English weight accumulated.
+    /// </summary>
+    private async Task RepairLanguageWeightsIfNeededAsync(string userId)
+    {
+        try
+        {
+            var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
+            if (string.IsNullOrWhiteSpace(apiKey)) return;
+
+            var profile = _profileService.GetProfile(userId);
+
+            // Guard: only repair if profile looks suspicious
+            var nonEnWeight = profile.LanguageWeights
+                .Where(kv => kv.Key != "en")
+                .Sum(kv => kv.Value);
+            if (nonEnWeight >= 5.0) return;           // already healthy
+            if (profile.WatchedTmdbIds.Count < 3) return; // too few watches to matter
+
+            _logger.LogInformation(
+                "[UpcomingMovies] Profile language repair starting for user {UserId} " +
+                "(non-English weight={W:F1}, watched={Count})",
+                userId, nonEnWeight, profile.WatchedTmdbIds.Count);
+
+            // Fetch last 30 watched movies from TMDB to get actual languages
+            var recentIds = profile.WatchedTmdbIds.TakeLast(30).ToList();
+            var langCounts = new Dictionary<string, int>();
+            var semaphore = new System.Threading.SemaphoreSlim(5, 5); // max 5 parallel TMDB calls
+            var client = _httpClientFactory.CreateClient();
+
+            var tasks = recentIds.Select(async id =>
+            {
+                await semaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    var res = await client.GetAsync(
+                        $"{TmdbBaseUrl}/movie/{id}?api_key={apiKey}&language=en-US")
+                        .ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("original_language", out var langEl))
+                    {
+                        var lang = langEl.GetString();
+                        if (!string.IsNullOrWhiteSpace(lang))
+                            lock (langCounts) { langCounts[lang] = langCounts.GetValueOrDefault(lang) + 1; }
+                    }
+                }
+                catch { /* ignore per-movie failures */ }
+                finally { semaphore.Release(); }
+            });
+
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            // Re-load profile (may have changed during the await) and patch language weights
+            profile = _profileService.GetProfile(userId);
+            bool changed = false;
+
+            foreach (var (lang, count) in langCounts)
+            {
+                if (lang == "en") continue;
+                // Only add weight if this language is currently underrepresented in the profile.
+                // Weight = count × BaseWatchWeight × 0.4 (conservative — avoids overshooting decay).
+                var addWeight = count * 5.0 * 0.4;
+                var current   = profile.LanguageWeights.GetValueOrDefault(lang);
+                if (addWeight > current)
+                {
+                    profile.LanguageWeights[lang] = addWeight;
+                    changed = true;
+                    _logger.LogInformation(
+                        "[UpcomingMovies] Repaired language weight for user={UserId}: {Lang} = {W:F1} (from {Count} historical movies)",
+                        userId, lang, addWeight, count);
+                }
+            }
+
+            if (changed)
+            {
+                _profileService.SaveProfile(profile);
+                _logger.LogInformation("[UpcomingMovies] Profile language repair complete for user {UserId}", userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[UpcomingMovies] Profile language repair failed for user {UserId}", userId);
+        }
     }
 }
