@@ -7,18 +7,16 @@ using System.Threading.Tasks;
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
-using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.UpcomingMovies.Services;
 
 /// <summary>
 /// Handles Jellyfin UserDataSaved events to keep user taste profiles up to date.
-/// Registered directly by Plugin.cs (not via DI) to avoid Jellyfin version compatibility issues.
+/// Registered directly in Plugin.cs constructor -- no DI interface needed.
 /// </summary>
 public class UserDataSavedConsumer
 {
-    private readonly ILibraryManager _libraryManager;
     private readonly UserProfileService _profileService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<UserDataSavedConsumer> _logger;
@@ -26,21 +24,17 @@ public class UserDataSavedConsumer
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
 
     public UserDataSavedConsumer(
-        IUserDataManager userDataManager,
-        ILibraryManager libraryManager,
         UserProfileService profileService,
         IHttpClientFactory httpClientFactory,
         ILogger<UserDataSavedConsumer> logger)
     {
-        _libraryManager = libraryManager;
         _profileService = profileService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
     /// <summary>
-    /// Called by the IUserDataManager.UserDataSaved event whenever a user plays or marks a movie as watched.
-    /// Wired in Plugin.cs constructor.
+    /// Called by IUserDataManager.UserDataSaved whenever a user plays or marks a movie as watched.
     /// </summary>
     public void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
@@ -61,53 +55,20 @@ public class UserDataSavedConsumer
             !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
             return;
 
-        var userId = e.UserId.ToString("N");
+        var userId  = e.UserId.ToString("N");
 
-        // Map Jellyfin genre names → TMDB genre IDs
+        // Map Jellyfin genre names → TMDB genre IDs (BaseItem.Genres is string[], always available)
         var genreIds = (movie.Genres ?? Array.Empty<string>())
             .Select(g => UserProfileService.JellyfinNameToTmdbGenreId.TryGetValue(g, out var id) ? id : 0)
             .Where(id => id > 0)
             .ToList();
 
-        var language = movie.OriginalLanguage ?? "en";
-
-        // Get director/actor TMDB person IDs from Jellyfin metadata
-        var directors = new List<int>();
-        var actors    = new List<int>();
-
-        try
-        {
-            var people = _libraryManager.GetPeople(new InternalPeopleQuery { ItemId = movie.Id });
-            foreach (var person in people)
-            {
-                if (!person.ProviderIds.TryGetValue("Tmdb", out var personTmdbStr) ||
-                    !int.TryParse(personTmdbStr, out var personId) || personId <= 0)
-                    continue;
-
-                if (person.Type == PersonKind.Director)
-                    directors.Add(personId);
-                else if (person.Type == PersonKind.Actor && actors.Count < 10)
-                    actors.Add(personId);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[UpcomingMovies] Could not load people for item {ItemId}", movie.Id);
-        }
-
-        // If Jellyfin metadata didn't have TMDB person IDs, fetch from TMDB in the background
-        if (directors.Count == 0 && actors.Count == 0)
-        {
-            Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds, language));
-        }
-        else
-        {
-            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
-        }
+        // Always fetch director/actor from TMDB credits API (avoids Jellyfin.Data.Enums dependency)
+        // Language defaults to "en" -- improved in a future phase if needed
+        Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds));
     }
 
-    private async Task FetchCreditsAndUpdateAsync(
-        string userId, int tmdbId, List<int> genreIds, string language)
+    private async Task FetchCreditsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds)
     {
         var directors = new List<int>();
         var actors    = new List<int>();
@@ -117,14 +78,16 @@ public class UserDataSavedConsumer
             var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                var client = _httpClientFactory.CreateClient();
-                var url    = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
+                var client   = _httpClientFactory.CreateClient();
+                var url      = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
                 var response = await client.GetAsync(url).ConfigureAwait(false);
+
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
 
+                    // Directors from crew
                     if (doc.RootElement.TryGetProperty("crew", out var crew))
                     {
                         foreach (var member in crew.EnumerateArray())
@@ -139,6 +102,7 @@ public class UserDataSavedConsumer
                         }
                     }
 
+                    // Top-billed actors (first 5)
                     if (doc.RootElement.TryGetProperty("cast", out var cast))
                     {
                         foreach (var member in cast.EnumerateArray().Take(5))
@@ -158,6 +122,6 @@ public class UserDataSavedConsumer
             _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
         }
 
-        _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
+        _profileService.UpdateWithWatch(userId, tmdbId, genreIds, "en", directors, actors);
     }
 }
