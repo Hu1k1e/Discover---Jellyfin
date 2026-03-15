@@ -265,12 +265,15 @@
             .htv-modal-actions button:hover, .htv-modal-actions a:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
             .htv-modal-actions .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
             .htv-modal-actions .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
-            .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; }
+            .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; pointer-events: none; opacity: 0.6; }
+            /* Global card-level requested button */
+            .btn-request.requested { opacity: 0.65 !important; cursor: default !important; pointer-events: none !important; }
+            /* ─────────────────────────────────────────────────────
                REQUEST MODAL (Jellyseerr quality-profile)
-               ────────────────────────────────────────── */
+               ───────────────────────────────────────────────────── */
             .dcm-backdrop {
-                position: fixed; inset: 0; z-index: 9998;
-                background: rgba(0,0,0,0.72);
+                position: fixed; inset: 0; z-index: 10000;
+                background: rgba(0,0,0,0.78);
                 display: flex; align-items: center; justify-content: center;
                 animation: dcm-fadein 0.18s ease;
             }
@@ -871,15 +874,24 @@
                 actionsHtml += '<button class="btn-play" data-jellyfin="' + jellyfinId + '">Play</button>';
                 playHtml = '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>';
             } else if (tmdbId) {
-                // Unavailable Rec: Show Request and Stream buttons side-by-side
-                actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+                var alreadyReq = window._jellyseerrRequests && window._jellyseerrRequests.has(String(tmdbId));
+                if (alreadyReq) {
+                    actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + tmdbId + '" disabled>&#10003; Requested</button>';
+                } else {
+                    actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+                }
                 if (streamBaseUrl) {
                     actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
                 }
             }
         } else if (tmdbId) {
             // Upcoming: Just Request block button
-            actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+            var alreadyReqUp = window._jellyseerrRequests && window._jellyseerrRequests.has(String(tmdbId));
+            if (alreadyReqUp) {
+                actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + tmdbId + '" disabled>&#10003; Requested</button>';
+            } else {
+                actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+            }
         }
 
         var posterHtml = posterUrl
