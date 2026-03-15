@@ -325,8 +325,35 @@ Returns top 60, sorted by score (highest first)
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
-2. Catalog → Upcoming Movies & Recommendations → Install v1.0.12
-3. Restart Jellyfin
+---
+
+## Phase 21.2 — IHostedService Fix + Balanced Scoring (2026-03-15) ✅
+
+| Issue | Fix |
+|-------|-----|
+| Build error: `IServerEntryPoint` not found | `IServerEntryPoint` was **removed from Jellyfin 10.10+**. Replaced with `IHostedService` (`StartAsync`/`StopAsync`) in `UserDataSavedConsumer.cs` |
+| Registration | `PluginServiceRegistrator` updated to use `serviceCollection.AddHostedService<UserDataSavedConsumer>()` |
+| Genre too dominant (×8) | Reduced to ×2.0 for a healthy mix |
+
+### Final Balanced Scoring Table
+| Factor | Points |
+|--------|--------|
+| Director source bonus | +25 |
+| Actor source bonus | +20 |
+| Seed /recommendations | +30 |
+| Seed /similar | +15 |
+| Genre match (per genre × weight) | `weight × 2.0` |
+| Language affinity | `weight × 2.0` |
+| Vote average (0–10) | `× 6.0` → up to 60 pts |
+| Popularity (capped 100) | `× 0.5` → up to 50 pts |
+| Released ≤ 2 years | +12 |
+| Released > 10 years | −8 |
+
+**Latest Release: v1.0.30** — Phase 21.2 (IHostedService fix + balanced scoring).
+
+**To install:**
+1. Dashboard → Plugins → Repositories → add manifest URL above
+
 
 **Pending user actions:**
 - Verify TMDB API key is saved in plugin settings
