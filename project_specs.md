@@ -216,9 +216,22 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Requested button state | `buildCard()` now checks `window._jellyseerrRequests.has(String(tmdbId))` before rendering the Request button. Already-requested movies render a disabled `✓ Requested` button with `opacity:0.65` and `pointer-events:none` on both recommendation cards and upcoming cards. |
 | CSS: requested button disabled | Added global `.btn-request.requested` rule: `opacity:0.65 !important; cursor:default !important; pointer-events:none !important;` so the button is visually and functionally disabled everywhere. |
 
+---
+
+## Phase 19 — Performance, Requested State & Radarr Pre-cache (2026-03-15) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| **10s card loading lag** | `fetchRecommendations` no longer fetches `People` field during initial render. Was fetching 50–100 movies × 50+ cast members per film = massive payload. Removed `People` from `IncludeItemTypes` query. |
+| **Background People enrichment** | `_enrichPeopleAsync()` runs 200ms after render in a `setTimeout`. Fetches only 30 movies with People field. Stores director/actor weights in `sessionStorage` via `_pGet()` / `_pSave()`. Used on next page load for better recommendations. |
+| **SessionStorage profile cache** | `htv_uprofile` key in sessionStorage caches director/actor signal weights (`dW`, `aW`) across page loads. Signals immediately available with zero fetch cost on repeat visits. |
+| **10s request modal lag** | Radarr instances now pre-cached via `_fetchRadarrCached()` (called 50ms after container init). Request modal opens instantly (no blocking fetch). |
+| **Already-requested cards still show Request** | `fetchAndCacheJellyseerrRequests()` fetches `/UpcomingMovies/jellyseerr/requests` in background on page init (100ms delay). After load, DOM-refreshes all `.btn-request:not(.requested)` buttons matching the Set. Handles the backend's integer array format. |
+| **Requested state not persisting** | After successful request submission, TMDB ID immediately added to `window._jellyseerrRequests` Set. Future card renders on same page session also show Requested state. |
+
 # 10. Current Status
 
-**Latest Release: v1.0.25** — Phase 18 completed (request modal CSS fix, z-index fix, requested-state button).
+**Latest Release: v1.0.26** — Phase 19 completed (fast recommendations, Radarr pre-cache, requested-state fix).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
