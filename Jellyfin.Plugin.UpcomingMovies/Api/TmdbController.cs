@@ -288,11 +288,11 @@ public class TmdbController : ControllerBase
                     }
                 }
 
-                // Language affinity (2× multiplier)
+                // Language affinity (4× multiplier — strong signal: preferred language beats quality for unpreferred)
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
-                    score += profile.LanguageWeights.GetValueOrDefault(lang) * 2.0;
+                    score += profile.LanguageWeights.GetValueOrDefault(lang) * 4.0;
                 }
 
                 // Vote average (0–10 → 0–60 pts) — strong quality signal
