@@ -1011,3 +1011,55 @@ A film in a recently-watched genre can shift ~1–4 positions relative to a film
 |------|--------|
 | `Services/UserProfileService.cs` | Added `GetRecentInterestWeights()` — exp(-k×days) decay over RecentWatches |
 | `Api/TmdbController.cs` | Calls `ProfileService.GetRecentInterestWeights(profile)` before scoring; adds recency bonus to genre (×8) and language (×5) scoring |
+
+---
+
+## Phase 37 — Manifest Fix + CI Workflow Fix (2026-03-15) ✅
+
+**Root cause of versions not appearing in Jellyfin plugin catalog:**  
+The GitHub Actions `build-release.yml` manifest-update step was using `git pull --rebase` before pushing the updated `manifest.json`. When multiple tags are pushed in quick succession, by the time CI checks out `main` and tries to push, `main` has already moved ahead (from the previous build's manifest commit). This caused a non-fast-forward rejection and the `manifest.json` never got updated.
+
+**What was fixed:**
+- Changed `git pull origin main --rebase` → `git fetch origin main && git reset --hard origin/main` — always starts from the exact remote HEAD, no rebase conflicts
+- Changed `git push origin main` → `git push --force-with-lease origin main` — can push even if local fell behind, but rejects if someone else pushed concurrently (safe)
+
+**Versions manually backfilled in manifest.json:** v1.0.48, v1.0.49, v1.0.50, v1.0.51, v1.0.52 (checksums taken from GitHub release body MD5 fields via API).
+
+---
+
+## ⚠️ Release Process — REQUIRED READING FOR ALL FUTURE AGENTS ⚠️
+
+### How a Jellyfin Plugin Release Works
+
+1. **Commit code changes** to the local `main` branch
+2. **Tag the release** — the tag name determines the version: `git tag v1.0.XX`
+3. **Push both** — `git push origin main && git push origin v1.0.XX`
+
+When the tag is pushed, GitHub Actions (`build-release.yml`) automatically:
+- Builds the `.dll` in Release mode
+- Packages it as `jellyfin-plugin-upcoming-movies_v1.0.XX.zip`
+- Computes MD5 checksum
+- **Prepends a new entry to `manifest.json`** on the `main` branch
+- Creates a GitHub Release with the ZIP as an asset
+
+Jellyfin reads **`manifest.json` on the `main` branch** to list available versions in the plugin catalog. If `manifest.json` is not updated, the version **will not appear** even if the release ZIP exists.
+
+### When manifest.json Falls Out of Sync (Recovery Procedure)
+
+If Jellyfin does not show a new version, check:
+1. Did the CI run succeed? Look at the Actions tab on GitHub
+2. Does `manifest.json` on `main` have the new version? Check `https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json`
+3. Does the GitHub Release exist with the ZIP asset?
+
+**If the manifest is missing versions:**
+- Get the MD5 checksum from the release body text on GitHub (it says `**ZIP MD5:** \`...\``)
+- OR call `https://api.github.com/repos/Hu1k1e/Discover---Jellyfin/releases` to get release metadata
+- Manually prepend missing versions to `manifest.json` (newest first), commit, and push `main`
+
+### What NOT to do
+- ❌ Do NOT retag and re-push without fixing the manifest — the CI workflow will create a duplicate release
+- ❌ Do NOT push tags without committing code first — the CI builds from tagged HEAD
+- ❌ Do NOT edit manifest.json without the correct MD5 checksum from the actual built ZIP
+
+### Version Numbering Convention
+Current version: **1.0.52**. Next release: **1.0.53**. Always increment the third part by 1.

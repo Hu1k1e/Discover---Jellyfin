@@ -9,6 +9,46 @@
     "imageUrl": "https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/icon.png",
     "versions": [
       {
+        "version": "1.0.52.0",
+        "changelog": "Release 1.0.52.0. Time-decay recency scoring (90-day half-life). See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.52/jellyfin-plugin-upcoming-movies_v1.0.52.zip",
+        "checksum": "8e1f94d33d0c6ed904551e465fa6cda5",
+        "timestamp": "2026-03-15T18:54:10Z"
+      },
+      {
+        "version": "1.0.51.0",
+        "changelog": "Release 1.0.51.0. Infinite scroll, Malayalam/regional language fix (real TMDB language detection), Source 9 multi-language. See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.51/jellyfin-plugin-upcoming-movies_v1.0.51.zip",
+        "checksum": "665d889d78a628f622dc6633322b3ed1",
+        "timestamp": "2026-03-15T18:48:18Z"
+      },
+      {
+        "version": "1.0.50.0",
+        "changelog": "Release 1.0.50.0. Discover More pool variety, language-affinity Source 9. See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.50/jellyfin-plugin-upcoming-movies_v1.0.50.zip",
+        "checksum": "71cbff49a6179f78e073d366c216ca42",
+        "timestamp": "2026-03-15T18:36:58Z"
+      },
+      {
+        "version": "1.0.49.0",
+        "changelog": "Release 1.0.49.0. Watchlist signals in recommendation engine. See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.49/jellyfin-plugin-upcoming-movies_v1.0.49.zip",
+        "checksum": "fc8e7bf4e9fdcb55176cddd802bb9da9",
+        "timestamp": "2026-03-15T18:25:55Z"
+      },
+      {
+        "version": "1.0.48.0",
+        "changelog": "Release 1.0.48.0. Watchlist state persistence. See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.48/jellyfin-plugin-upcoming-movies_v1.0.48.zip",
+        "checksum": "ff20d862d69effcdb0d0ca7a20f353b6",
+        "timestamp": "2026-03-15T18:07:02Z"
+      },
+      {
         "version": "1.0.47.0",
         "changelog": "Release 1.0.47.0. See GitHub for details.",
         "targetAbi": "10.11.0.0",
