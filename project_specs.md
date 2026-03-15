@@ -813,3 +813,46 @@ swiparr's `getAuthenticatedHeaders()` uses `'Authorization': 'MediaBrowser Token
 |------|--------|
 | `Web/discoverPage.js` | `addToWatchlist()`: endpoint changed to `POST /Rating?Likes=true`, header to `Authorization: MediaBrowser Token="<token>"` |
 | `Web/discoverPage.js` | `removeFromWatchlist()`: endpoint changed to `POST /Rating?Likes=false` (was `DELETE /LikedItems/`) |
+
+---
+
+## Phase 32 — Watchlist State Persistence + Auto-Watchlist Fix (2026-03-15) ✅
+
+**Release: v1.0.48**
+
+### Bug 1: Watchlist Icon Not Persisting on Reload
+
+**Root cause:** `renderTmdbCards()` never forwarded `movie.isWatchlisted` to `buildCard()`. The data was correctly fetched from `UserData.Likes` and set onto the movie object, but the card was always built with `isWatchlisted = false` because the property wasn't passed.
+
+**Fix:** Added `isWatchlisted: !!movie.isWatchlisted` to the `buildCard()` call inside `renderTmdbCards()`.
+
+```js
+// discoverPage.js — renderTmdbCards()
+containerEl.appendChild(buildCard({
+    ...
+    isWatchlisted: !!movie.isWatchlisted   // ← was missing
+}));
+```
+
+### Bug 2: Auto-Watchlist on Request Fulfillment Not Working
+
+**Root cause:** `LibraryItemAddedConsumer.cs` was calling a non-existent endpoint `/UserWatchlistItems/{id}?userId={uid}` with an `X-Emby-Token` header (raw token). Neither existed in the Jellyfin API.
+
+**Fix:** Changed to the correct endpoint and header format (same as the frontend fix confirmed in Phase 31):
+
+```csharp
+// Before (broken)
+var url = $"{localUrl}/UserWatchlistItems/{jellyfinItemId}?userId={userId}";
+req.Headers.Add("X-Emby-Token", apiKey);
+
+// After (correct)
+var url = $"{localUrl}/Users/{userId}/Items/{jellyfinItemId}/Rating?Likes=true";
+req.Headers.TryAddWithoutValidation("Authorization", $"MediaBrowser Token=\"{apiKey}\"");
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | `renderTmdbCards()`: added `isWatchlisted: !!movie.isWatchlisted` to `buildCard()` call |
+| `Services/LibraryItemAddedConsumer.cs` | Fixed endpoint from `/UserWatchlistItems/` → `/Users/{uid}/Items/{id}/Rating?Likes=true`; fixed header from `X-Emby-Token` → `Authorization: MediaBrowser Token="<key>"` |

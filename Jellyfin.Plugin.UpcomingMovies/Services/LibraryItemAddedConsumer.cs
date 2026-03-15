@@ -62,9 +62,12 @@ public class LibraryItemAddedConsumer
         {
             try
             {
-                var url = $"{localUrl}/UserWatchlistItems/{jellyfinItemId}?userId={userId}";
+                // Correct Jellyfin API: POST /Users/{uid}/Items/{id}/Rating?Likes=true
+                // This sets UserData.Likes = true which is what KefinTweaks reads as watchlist.
+                // Auth header must be 'Authorization: MediaBrowser Token="<key>"'
+                var url = $"{localUrl}/Users/{userId}/Items/{jellyfinItemId}/Rating?Likes=true";
                 using var req = new HttpRequestMessage(HttpMethod.Post, url);
-                req.Headers.Add("X-Emby-Token", apiKey);
+                req.Headers.TryAddWithoutValidation("Authorization", $"MediaBrowser Token=\"{apiKey}\"");
 
                 var res = await client.SendAsync(req).ConfigureAwait(false);
                 if (res.IsSuccessStatusCode)

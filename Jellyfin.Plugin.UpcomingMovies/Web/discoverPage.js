@@ -1101,7 +1101,8 @@
                 isUpcoming:   !!isUpcoming,
                 isAvailable:  movie.isAvailable,
                 jellyfinId:   movie.jellyfinId,
-                voteAverage:  movie.vote_average
+                voteAverage:  movie.vote_average,
+                isWatchlisted: !!movie.isWatchlisted
             }));
         });
     }
