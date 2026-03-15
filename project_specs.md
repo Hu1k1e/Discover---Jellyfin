@@ -296,7 +296,32 @@ Returns top 60, sorted by score (highest first)
 ### Debug Endpoint
 `GET /UpcomingMovies/tmdb/profile?userId=xxx` — returns current weights, top genres/directors/actors/languages for admin inspection.
 
-**Latest Release: v1.0.28** — Phase 21 completed (intelligent per-user recommendation engine).
+---
+
+## Phase 21.1 — Build Fix + Genre Scoring Dominance (2026-03-15) ✅
+
+| Issue | Fix |
+|-------|-----|
+| Build error: `IServerEntryPoint` not found | Added `using MediaBrowser.Controller.Plugins;` to `UserDataSavedConsumer.cs` and `PluginServiceRegistrator.cs` |
+| Build error: `IPluginServiceRegistrator` not found | Same fix — both types live in `MediaBrowser.Controller.Plugins` namespace |
+| Genre not highest scoring factor | Genre multiplier raised from `×1.5` → `×8.0` — now clearly the dominant signal |
+| Scoring rebalance | Vote average `×5` → `×4`, recency bonus `+20` → `+15`, penalty `-10` → `-8` so genre always wins |
+
+### Updated Scoring Table
+| Factor | Points |
+|--------|--------|
+| **Genre match** (per genre × profile weight) | **`weight × 8.0`** ← highest |
+| Director source bonus | +50 |
+| Actor source bonus | +40 |
+| Seed /recommendations | +30 |
+| Seed /similar | +15 |
+| Language affinity | `weight × 2.0` |
+| Vote average | `× 4.0` |
+| Popularity (capped 100) | `× 0.3` |
+| Released ≤ 2 years | +15 |
+| Released > 10 years | −8 |
+
+**Latest Release: v1.0.29** — Phase 21.1 hotfix (build fix + genre scoring dominance).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
