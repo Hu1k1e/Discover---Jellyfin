@@ -175,11 +175,21 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Dynamic Overview Modal | Added `showOverviewModal()` to `discoverPage.js`. Clicking on any unavailable TMDB Poster generates a fixed fullscreen cinematic modal containing the HD backdrop, vertical poster, h1 title, and the full TMDB Overview synopsis snippet pulled from the `/tmdb/recommendations` parsing stream. The exact Request and Stream buttons inhabit the modal directly. |
 | Navigation Rollback | Scaled back the `injectNativeNavigation()` Sidebar code to exclusively inject the `discover-sidebar-tab` after `[data-name="watchlist"]`. Provided the user the multi-link JS snippet for manual configuration. |
 
+## Phase 15 — Adaptive Grid, Jellyseerr Bulk Status, & UI Polish (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Header Alignment | Abandoned manual margins and implemented Jellyfin's native `.padded-left` and `.padded-right` classes on the injected sections and `.discover-row` / `.discover-grid` containers. This mathematically aligns the `<h2>` text edge directly with the left border of the first movie poster card! |
+| Refresh Upcoming | Created a floating `<button is="emby-button" class="paper-icon-button-light">` with the Material `refresh` icon explicitly on the right side of the Upcoming Movies title line. Attaching an `onclick` listener to explicitly clear `[data-row="upcoming"]` and invoke `fetchUpcoming()`. |
+| Adaptive TMDB Recommendations Buffer | Re-engineered the "Discover More" mechanics. The JS engine now dynamically calculates the total `columnCount` based on the user's explicit window size. When computing, it mathematically ensures exactly `targetCount = cols * 3` items exist in a global `_tmdbRecBuffer`. If the buffer runs short, the engine recursive-fetches `fetchRecommendations(page++)` until it accumulates 3 full rows perfectly (after filtering watched local movies). |
+| Jellyseerr Pre-Load O(1) Display | Altered `JellyseerrController.cs` to expose `[HttpGet("requests")]`, proxying Jellyseerr's bulk `/api/v1/request?take=3000`. `discoverPage.js` hits this URL on load, caching the TMDB IDs into `window._jellyseerrRequests = new Set()`. `buildCard()` executes an O(1) hash check, immediately painting the `.btn-request.requested` Checkmark button natively on Grid generation! |
+| Immersive Blueprint Blur | Wrapped the `.htv-modal-backdrop` and applied the exact `filter: blur(12px) brightness(50%) saturate(120%);` as specified in user's UI theme. Spliced the authentic Jellyseerr Indigo Purple `#667BC6` into the hover states! |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.20** — Phase 14 completed (Uniform Cards, Glass UI Hover States, Jellyseerr Modal).
+**Latest Release: v1.0.21** — Phase 15 completed (Grid Buffers, O(1) Cached Requests, Modal Blur).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
