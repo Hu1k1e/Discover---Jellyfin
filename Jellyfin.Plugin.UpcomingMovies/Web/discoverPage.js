@@ -757,7 +757,7 @@
 
         // Actions
         var actionsHtml = '';
-        var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(tmdbId)) || false;
+        var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(String(opts.tmdbId))) || false;
         
         var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
         if (isRequested || (existingBtn && existingBtn.classList.contains('requested'))) {
@@ -786,6 +786,20 @@
             setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
         };
         overlay.addEventListener('click', closeFunc);
+
+        // Request button inside overview modal
+        var modalReqBtn = overlay.querySelector('.btn-request:not(.requested)');
+        if (modalReqBtn) {
+            modalReqBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                overlay.classList.remove('show');
+                setTimeout(function() {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    openRequestModal(String(opts.tmdbId), opts.title, opts.backdropUrl);
+                }, 50);
+            });
+        }
+
         // Stream button inside overview modal → open stream info modal
         var modalStreamBtn = overlay.querySelector('.btn-stream[data-stream-url]');
         if (modalStreamBtn) {
