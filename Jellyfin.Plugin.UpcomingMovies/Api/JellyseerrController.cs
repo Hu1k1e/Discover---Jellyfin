@@ -231,4 +231,62 @@ public class JellyseerrController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
+
+    /// <summary>
+    /// Fetches all requests from Jellyseerr to cross-reference and natively display "Requested" buttons.
+    /// </summary>
+    [HttpGet("requests")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRequests()
+    {
+        try
+        {
+            var config = Plugin.Instance?.Configuration;
+            if (config is null || string.IsNullOrWhiteSpace(config.JellyseerrUrl) || string.IsNullOrWhiteSpace(config.JellyseerrApiKey))
+            {
+                return Ok(new List<int>());
+            }
+
+            var baseUrl = config.JellyseerrUrl.TrimEnd('/');
+            // Fetch up to 3000 requests to seed the frontend cache
+            var endpoint = $"{baseUrl}/api/v1/request?take=3000";
+
+            var client = _httpClientFactory.CreateClient();
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+            request.Headers.Add("X-Api-Key", config.JellyseerrApiKey);
+
+            var response = await client.SendAsync(request).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return Ok(new List<int>());
+            }
+
+            var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            
+            var requestedTmdbIds = new HashSet<int>();
+
+            if (root.TryGetProperty("results", out var results) && results.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var req in results.EnumerateArray())
+                {
+                    if (req.TryGetProperty("media", out var media) && media.TryGetProperty("tmdbId", out var tmdbIdProp))
+                    {
+                        if (tmdbIdProp.TryGetInt32(out var tId))
+                        {
+                            requestedTmdbIds.Add(tId);
+                        }
+                    }
+                }
+            }
+
+            return Ok(requestedTmdbIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[UpcomingMovies] Failed to load Jellyseerr bulk requests.");
+            return Ok(new List<int>());
+        }
+    }
 }

@@ -74,18 +74,20 @@
             }
             .discover-row {
                 display: flex;
-                overflow: hidden;
+                overflow-x: auto;
                 gap: 24px;
-                padding: 4px 0 14px 0;
+                padding-top: 4px; padding-bottom: 24px;
                 cursor: grab;
                 user-select: none;
                 -webkit-user-select: none;
+                scrollbar-width: none;
             }
+            .discover-row::-webkit-scrollbar { display: none; }
             .discover-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
                 gap: 24px;
-                padding: 4px 0 14px 0;
+                padding-top: 4px; padding-bottom: 24px;
             }
             .discover-row.dragging { cursor: grabbing; }
 
@@ -196,7 +198,7 @@
             .dc-action-bar button:disabled { opacity: 1 !important; transform: none !important; cursor: default; }
 
             /* Hover Colors */
-            .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
+            .btn-request:hover { background: #667BC6 !important; border-color: #667BC6 !important; }
             .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; }
             .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
@@ -218,14 +220,19 @@
             }
             .htv-modal-overlay.show .htv-modal-content { transform: scale(1); }
             
+            .htv-modal-backdrop-wrap {
+                position: absolute; top: 0; left: 0; right: 0; height: 350px;
+                overflow: hidden; border-radius: 12px 12px 0 0; z-index: 0; pointer-events: none;
+            }
             .htv-modal-backdrop {
-                width: 100%; height: 250px; background-size: cover; background-position: center top;
-                position: relative; border-radius: 12px 12px 0 0;
+                width: 100%; height: 100%; background-size: cover; background-position: center 20%;
+                filter: blur(12px) brightness(50%) saturate(120%); transform: scale(1.15);
             }
-            .htv-modal-backdrop::after {
-                content: ""; position: absolute; inset: 0;
-                background: linear-gradient(transparent 50%, #111 100%);
+            .htv-modal-backdrop-overlay {
+                position: absolute; inset: 0;
+                background: linear-gradient(transparent 10%, #111 100%); z-index: 1;
             }
+
             .htv-modal-close {
                 position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.5);
                 border: none; color: #fff; font-size: 24px; width: 40px; height: 40px;
@@ -235,7 +242,7 @@
             .htv-modal-close:hover { background: rgba(255,255,255,0.2); }
             
             .htv-modal-body {
-                padding: 0 30px 30px 30px; display: flex; gap: 30px; margin-top: -60px; position: relative; z-index: 5;
+                padding: 0 30px 30px 30px; display: flex; gap: 30px; margin-top: 120px; position: relative; z-index: 5;
             }
             @media (max-width: 600px) {
                 .htv-modal-body { flex-direction: column; align-items: center; margin-top: -40px; gap: 20px; }
@@ -257,7 +264,7 @@
                 background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;
             }
             .htv-modal-actions button:hover, .htv-modal-actions a:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-            .htv-modal-actions .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
+            .htv-modal-actions .btn-request:hover { background: #667BC6 !important; border-color: #667BC6 !important; }
             .htv-modal-actions .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; }
                REQUEST MODAL (Jellyseerr quality-profile)
@@ -323,21 +330,23 @@
     function buildSectionHtml(id, title, isGrid) {
         if (isGrid) {
             return '<div class="discover-section" data-section="' + id + '">'
-                + '<h2 class="discover-section-title">' + title + '</h2>'
-                + '<div class="discover-grid" data-row="' + id + '">'
+                + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
+                + '<div class="discover-grid padded-left padded-right" data-row="' + id + '">'
                 + '  <div class="discover-loading">Loading&hellip;</div>'
                 + '</div>'
                 + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color:#fff; display:none; padding:12px 24px; border-radius:8px; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.2s;" onmouseover="this.style.background=\'#00C853\'" onmouseout="this.style.background=\'rgba(255,255,255,0.08)\'">Discover More</button></div>'
                 + '</div>';
         }
+        var refreshBtn = '<button is="emby-button" class="emby-button paper-icon-button-light" style="margin-right:4%; color:#aaa; font-size:1.1em; padding:8px;" title="Refresh Upcoming" data-action="refresh-upcoming"><i class="material-icons">refresh</i></button>';
         return '<div class="discover-section" data-section="' + id + '">'
-            + '<h2 class="discover-section-title">' + title + '</h2>'
+            + '<div style="display:flex; align-items:center; justify-content:space-between;">'
+            + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
+            + refreshBtn
+            + '</div>'
             + '<div class="discover-row-wrap">'
-            + '  <button class="discover-arrow left" aria-label="Scroll left">&#8249;</button>'
-            + '  <div class="discover-row" data-row="' + id + '">'
+            + '  <div class="discover-row padded-left padded-right" data-row="' + id + '">'
             + '    <div class="discover-loading">Loading&hellip;</div>'
             + '  </div>'
-            + '  <button class="discover-arrow right" aria-label="Scroll right">&#8250;</button>'
             + '</div></div>';
     }
 
@@ -695,9 +704,9 @@
         modalHtml += '<button class="htv-modal-close" aria-label="Close">\u00D7</button>';
         
         if (opts.backdropUrl) {
-            modalHtml += '<div class="htv-modal-backdrop" style="background-image: url(\'' + escapeHtml(opts.backdropUrl) + '\');"></div>';
+            modalHtml += '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background-image: url(\'' + escapeHtml(opts.backdropUrl) + '\');"></div><div class="htv-modal-backdrop-overlay"></div></div>';
         } else {
-            modalHtml += '<div class="htv-modal-backdrop" style="background: #222;"></div>';
+            modalHtml += '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background: #222;"></div><div class="htv-modal-backdrop-overlay"></div></div>';
         }
 
         modalHtml += '<div class="htv-modal-body">';
@@ -717,9 +726,10 @@
 
         // Actions
         var actionsHtml = '';
-        var isRequested = opts.isRequested || false; // Inherit state from DOM button if we wanted to
+        var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(tmdbId)) || false;
+        
         var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
-        if (existingBtn && existingBtn.classList.contains('requested')) {
+        if (isRequested || (existingBtn && existingBtn.classList.contains('requested'))) {
             actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + opts.tmdbId + '" disabled>&#10003; Requested</button>';
         } else {
             actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + opts.tmdbId + '">Request</button>';
@@ -918,6 +928,8 @@
         // Fetch Jellyfin library map so we know which items are available
         var client = window.ApiClient;
         var userId = client && client.getCurrentUserId();
+        var tmdbMap = {};
+
         if (userId && config.showRecommendations && rec && rec.results) {
             try {
                 var server = client._serverAddress;
@@ -928,7 +940,6 @@
                 );
                 if (allRes.ok) {
                     var allData = await allRes.json();
-                    var tmdbMap = {};
                     (allData.Items || []).forEach(function(item) {
                         var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
                         if (tid) {
@@ -937,15 +948,18 @@
                     });
 
                     // Filter out already watched movies from recommendations
-                    rec.results = rec.results.filter(function(movie) {
-                        var localInfo = tmdbMap[movie.id];
-                        if (localInfo && localInfo.played) return false; // Hide completely
+                    var validRecs = [];
+                    for(var i=0; i<rec.results.length; i++) {
+                        var m = rec.results[i];
+                        var localInfo = tmdbMap[m.id];
+                        if (localInfo && localInfo.played) continue; // Hide completely
                         if (localInfo) {
-                            movie.isAvailable = true;
-                            movie.jellyfinId = localInfo.id;
+                            m.isAvailable = true;
+                            m.jellyfinId = localInfo.id;
                         }
-                        return true;
-                    });
+                        validRecs.push(m);
+                    }
+                    rec.results = validRecs;
                 }
             } catch (err) {
                 WARN('Failed to check Jellyfin library availability:', err);
@@ -958,44 +972,101 @@
             else              { rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
 
-        var recPage = 1;
         var btnMore = containerDiv.querySelector('.btn-discover-more');
+        var _tmdbRecBuffer = [];
+        var _tmdbRecPage = 1;
+        var _tmdbRecTotalPages = 1;
+
+        async function ensureRecommendationsBuffer(targetCount) {
+            while (_tmdbRecBuffer.length < targetCount && _tmdbRecPage <= _tmdbRecTotalPages) {
+                var raw = await fetchRecommendations(_tmdbRecPage);
+                if (!raw || !raw.results) break;
+                if (_tmdbRecPage === 1) _tmdbRecTotalPages = raw.total_pages || 1;
+                
+                var valid = [];
+                for(var j=0; j<raw.results.length; j++) {
+                    var m = raw.results[j];
+                    var info = tmdbMap[m.id];
+                    if (info && info.played) continue;
+                    if (info) { m.isAvailable = true; m.jellyfinId = info.id; }
+                    valid.push(m);
+                }
+                Array.prototype.push.apply(_tmdbRecBuffer, valid);
+                _tmdbRecPage++;
+            }
+        }
 
         if (rowRec) {
             if (isSetup(rec)) { rowRec.innerHTML = SETUP_HTML; }
             else if (rec) {
-                renderTmdbCards(rec.results, rowRec, streamBaseUrl, false, false);
-                if (btnMore && rec.page < rec.total_pages) {
+                // Determine target count (cols * 3)
+                var containerWidth = rowRec.clientWidth || 1000;
+                var cols = Math.floor((containerWidth + 24) / (150 + 24));
+                if (cols < 1) cols = 1;
+                var targetCount = cols * 3;
+
+                // Load initial chunk
+                _tmdbRecPage = 2; // already fetched page 1 in rec
+                _tmdbRecTotalPages = rec.total_pages || 1;
+                Array.prototype.push.apply(_tmdbRecBuffer, rec.results); // already filtered
+
+                await ensureRecommendationsBuffer(targetCount);
+
+                var sliceCount = Math.min(targetCount, _tmdbRecBuffer.length);
+                var chunk = _tmdbRecBuffer.splice(0, sliceCount);
+                renderTmdbCards(chunk, rowRec, streamBaseUrl, false, false);
+
+                if (btnMore && (_tmdbRecBuffer.length > 0 || _tmdbRecPage <= _tmdbRecTotalPages)) {
                     btnMore.style.display = 'inline-block';
                     btnMore.addEventListener('click', async function() {
                         btnMore.textContent = 'Loading...';
-                        recPage++;
                         try {
-                            var moreRecs = await fetchRecommendations(recPage);
-                            if (moreRecs && moreRecs.results) {
-                                // Filter out watched items again for pagination
-                                if (tmdbMap) {
-                                  moreRecs.results = moreRecs.results.filter(function(m) {
-                                      var info = tmdbMap[m.id];
-                                      if (info && info.played) return false;
-                                      if (info) {
-                                          m.isAvailable = true;
-                                          m.jellyfinId = info.id;
-                                      }
-                                      return true;
-                                  });
-                                }
-                                renderTmdbCards(moreRecs.results, rowRec, streamBaseUrl, false, true);
+                            var cw = rowRec.clientWidth || 1000;
+                            var dynCols = Math.floor((cw + 24) / (150 + 24));
+                            if (dynCols < 1) dynCols = 1;
+                            var dynTargetCount = dynCols * 3;
+
+                            await ensureRecommendationsBuffer(dynTargetCount);
+                            
+                            var sc = Math.min(dynTargetCount, _tmdbRecBuffer.length);
+                            var nextChunk = _tmdbRecBuffer.splice(0, sc);
+                            if (nextChunk.length > 0) {
+                                renderTmdbCards(nextChunk, rowRec, streamBaseUrl, false, true);
                             }
-                            if (!moreRecs || recPage >= moreRecs.total_pages) btnMore.style.display = 'none';
-                            else btnMore.textContent = 'Discover More';
+                            
+                            if (_tmdbRecBuffer.length === 0 && _tmdbRecPage > _tmdbRecTotalPages) {
+                                btnMore.style.display = 'none';
+                            } else {
+                                btnMore.textContent = 'Discover More';
+                            }
                         } catch (err) {
                             btnMore.textContent = 'Error Loading. Try Again';
                         }
                     });
+                } else if (btnMore) {
+                    btnMore.style.display = 'none';
                 }
             }
             else { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
+        }
+
+        // Attach Refresh button handler for Upcoming Movies
+        var btnUpcomingRefresh = containerDiv.querySelector('[data-action="refresh-upcoming"]');
+        if (btnUpcomingRefresh && rowUpcoming) {
+            btnUpcomingRefresh.addEventListener('click', async function() {
+                var icon = this.querySelector('i');
+                if (icon) { icon.textContent = 'hourglass_empty'; }
+                rowUpcoming.innerHTML = '<div class="discover-loading">Refreshing...</div>';
+                try {
+                    var upcNew = await fetchUpcoming();
+                    if (isSetup(upcNew)) { rowUpcoming.innerHTML = SETUP_HTML; }
+                    else if (upcNew)     { renderTmdbCards(upcNew.results, rowUpcoming, streamBaseUrl, true); }
+                    else                 { rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
+                } catch(e) {
+                    rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>';
+                }
+                if (icon) icon.textContent = 'refresh';
+            });
         }
 
         _renderingContainers.delete(containerDiv);
@@ -1026,6 +1097,22 @@
 
         populateDiscoverContainer(injectWrapper);
     }
+
+    // Global URL Interceptor to hijack #/home?custom=discover (prevents Page Not Found header stripping)
+    var _lastCustomHash = window.location.hash;
+    setInterval(function() {
+        var currentHash = window.location.hash;
+        if (currentHash !== _lastCustomHash) {
+            _lastCustomHash = currentHash;
+            if (currentHash.indexOf('custom=discover') !== -1) {
+                // Let Jellyfin render the Home base first to keep Head Tabs, then hijack
+                setTimeout(mountNativeDiscoverView, 150);
+            } else if (_lastCustomHash.indexOf('custom=discover') !== -1 && currentHash.indexOf('custom=discover') === -1) {
+                // If navigating away from our hijacked view, force a clean DOM reload to un-hijack the Home layout
+                window.location.reload();
+            }
+        }
+    }, 150);
 
     // Inject Navigation dynamically based on NavPlacement configuration + Secondary Links
     async function injectNativeNavigation() {
@@ -1067,8 +1154,8 @@
                         e.preventDefault();
                         var drawer = document.querySelector('.appDrawer-open');
                         if (drawer) drawer.classList.remove('appDrawer-open');
-                        window.location.hash = '#/discover';
-                        setTimeout(mountNativeDiscoverView, 50);
+                        window.location.hash = '#/home?custom=discover';
+                        setTimeout(mountNativeDiscoverView, 100);
                     });
                     
                     var container = document.querySelector('.customMenuOptions');
