@@ -166,11 +166,20 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 | Heading Alignment | Removed the `1%` lateral padding from the wrapper grids and rows, shifting the elements to mathematically align 1:1 with the left side of the `<h2>` section headers above them. |
 | Secondary Navbar Injector | Ripped out the basic 'Home' appending sidebar code. Injected the user's custom `MutationObserver` template. The script now aggressively hunts for `.customMenuOptions [data-name="watchlist"]` and dynamically appends **Calendar**, **Live Downloads**, and **Discover** directly below it perfectly styled. |
 
+## Phase 14 — Uniform Glass Cards & Overview Modal (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| Uniform Card Heights | Action bars are now `display: flex; flex-direction: row;`. Available Jellyfin movies now definitively inject a `btn-play` button into their action bar (matching the height footprint of the `btn-request` and `btn-stream` buttons). Every card now possesses a uniform vertical height regardless of its TMDB vs. Local availability state, creating a flush grid. |
+| Glass Touch Buttons | By default, `.btn-request`, `.btn-stream`, and `.btn-play` execute `background: rgba(255, 255, 255, 0.08);` with a `backdrop-filter: blur(4px);`. Hovering the elements injects explicit user colors (Purple for Request, Green for Stream/Play) and a `translateY(-2px)` CSS animation for premium tactile feedback. |
+| Dynamic Overview Modal | Added `showOverviewModal()` to `discoverPage.js`. Clicking on any unavailable TMDB Poster generates a fixed fullscreen cinematic modal containing the HD backdrop, vertical poster, h1 title, and the full TMDB Overview synopsis snippet pulled from the `/tmdb/recommendations` parsing stream. The exact Request and Stream buttons inhabit the modal directly. |
+| Navigation Rollback | Scaled back the `injectNativeNavigation()` Sidebar code to exclusively inject the `discover-sidebar-tab` after `[data-name="watchlist"]`. Provided the user the multi-link JS snippet for manual configuration. |
+
 ---
 
 # 10. Current Status
 
-**Latest Release: v1.0.19** — Phase 13 completed (UI Transparency, Button Colors, Sidebar Secondary Menus).
+**Latest Release: v1.0.20** — Phase 14 completed (Uniform Cards, Glass UI Hover States, Jellyseerr Modal).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above

@@ -75,7 +75,7 @@
             .discover-row {
                 display: flex;
                 overflow: hidden;
-                gap: 16px;
+                gap: 24px;
                 padding: 4px 0 14px 0;
                 cursor: grab;
                 user-select: none;
@@ -84,7 +84,7 @@
             .discover-grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                gap: 16px;
+                gap: 24px;
                 padding: 4px 0 14px 0;
             }
             .discover-row.dragging { cursor: grabbing; }
@@ -184,26 +184,82 @@
 
             /* ── Button Bar (Below Title) ── */
             .dc-action-bar {
-                display: flex; flex-direction: column; gap: 6px;
-                margin-top: auto; padding: 8px 6px 4px 6px;
+                display: flex; flex-direction: row; gap: 8px;
+                margin-top: auto; padding: 12px 6px 6px 6px;
             }
             .dc-action-bar button, .dc-action-bar a {
-                width: 100%; border-radius: 5px; font-weight: 600; cursor: pointer; border: none; padding: 7px; font-size: 13px;
-                text-align: center; text-decoration: none; transition: opacity 0.2s; box-sizing: border-box;
+                flex: 1; border-radius: 6px; font-weight: 600; cursor: pointer; border: none; padding: 8px; font-size: 13px;
+                text-align: center; text-decoration: none; transition: transform 0.2s, background 0.2s, opacity 0.2s; box-sizing: border-box;
+                background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #e0e0e0; backdrop-filter: blur(4px);
             }
-            .dc-action-bar button:hover, .dc-action-bar a:hover { opacity: 0.85; }
-            .dc-action-bar button:disabled { opacity: 1 !important; cursor: default; }
+            .dc-action-bar button:hover, .dc-action-bar a:hover { transform: translateY(-2px); color: #fff; }
+            .dc-action-bar button:disabled { opacity: 1 !important; transform: none !important; cursor: default; }
 
-            /* Colors */
-            .btn-request { background: #7B5EA7 !important; color: #fff !important; }
-            .btn-request[disabled] { background: #4a4a4a !important; color: #fff !important; }
-            .btn-stream { background: #00C853 !important; color: #fff !important; }
+            /* Hover Colors */
+            .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
+            .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; }
+            .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
+            .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
 
             .discover-loading { padding: 14px 0; color: #999; font-style: italic; }
             .discover-error   { padding: 14px 0; color: #ef5350; line-height: 1.7; }
-            .discover-hidden  { display: none !important; }
-
-            /* ──────────────────────────────────────────
+            /* ── Overview Modal ── */
+            .htv-modal-overlay {
+                position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 99999;
+                display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);
+                opacity: 0; transition: opacity 0.3s ease;
+            }
+            .htv-modal-overlay.show { opacity: 1; }
+            .htv-modal-content {
+                background: #111; border-radius: 12px; width: 90%; max-width: 800px;
+                max-height: 90vh; overflow-y: auto; position: relative;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+                transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+            .htv-modal-overlay.show .htv-modal-content { transform: scale(1); }
+            
+            .htv-modal-backdrop {
+                width: 100%; height: 250px; background-size: cover; background-position: center top;
+                position: relative; border-radius: 12px 12px 0 0;
+            }
+            .htv-modal-backdrop::after {
+                content: ""; position: absolute; inset: 0;
+                background: linear-gradient(transparent 50%, #111 100%);
+            }
+            .htv-modal-close {
+                position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.5);
+                border: none; color: #fff; font-size: 24px; width: 40px; height: 40px;
+                border-radius: 50%; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
+                transition: background 0.2s;
+            }
+            .htv-modal-close:hover { background: rgba(255,255,255,0.2); }
+            
+            .htv-modal-body {
+                padding: 0 30px 30px 30px; display: flex; gap: 30px; margin-top: -60px; position: relative; z-index: 5;
+            }
+            @media (max-width: 600px) {
+                .htv-modal-body { flex-direction: column; align-items: center; margin-top: -40px; gap: 20px; }
+            }
+            .htv-modal-poster {
+                width: 160px; flex-shrink: 0; border-radius: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+                aspect-ratio: 2/3; object-fit: cover; border: 2px solid rgba(255,255,255,0.1);
+            }
+            
+            .htv-modal-info { flex: 1; color: #ddd; display: flex; flex-direction: column; }
+            .htv-modal-title { font-size: 2em; color: #fff; margin: 0 0 5px 0; font-weight: 700; line-height: 1.1; }
+            .htv-modal-date { font-size: 0.9em; color: #aaa; margin-bottom: 16px; }
+            .htv-modal-overview { font-size: 1.05em; line-height: 1.6; margin-bottom: 24px; flex: 1; }
+            
+            .htv-modal-actions { display: flex; gap: 12px; }
+            .htv-modal-actions button, .htv-modal-actions a {
+                padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 15px;
+                text-align: center; text-decoration: none; transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+                background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;
+            }
+            .htv-modal-actions button:hover, .htv-modal-actions a:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+            .htv-modal-actions .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
+            .htv-modal-actions .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
+            .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; }
                REQUEST MODAL (Jellyseerr quality-profile)
                ────────────────────────────────────────── */
             .dcm-backdrop {
@@ -271,7 +327,7 @@
                 + '<div class="discover-grid" data-row="' + id + '">'
                 + '  <div class="discover-loading">Loading&hellip;</div>'
                 + '</div>'
-                + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background:#00C853; color:#fff; display:none;">Discover More</button></div>'
+                + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color:#fff; display:none; padding:12px 24px; border-radius:8px; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.2s;" onmouseover="this.style.background=\'#00C853\'" onmouseout="this.style.background=\'rgba(255,255,255,0.08)\'">Discover More</button></div>'
                 + '</div>';
         }
         return '<div class="discover-section" data-section="' + id + '">'
@@ -599,14 +655,12 @@
                 if (res.ok) {
                     statusEl.textContent = '\u2713 Requested successfully!';
                     statusEl.className = 'dcm-status success';
-                    // Update button on the UI
-                    var btn = document.querySelector('.btn-request[data-tmdb="' + tmdbId + '"]');
-                    if (btn) {
+                    var btns = document.querySelectorAll('.btn-request[data-tmdb="' + tmdbId + '"]');
+                    btns.forEach(function(btn) {
                         btn.innerHTML = '&#10003; Requested';
-                        btn.style.background = '#4a4a4a';
-                        btn.style.color = '#fff';
+                        btn.classList.add('requested');
                         btn.disabled = true;
-                    }
+                    });
                     setTimeout(close, 1600);
                 } else {
                     var errData = await res.json().catch(function() { return {}; });
@@ -631,8 +685,67 @@
     var SETUP_HTML = '<div class="discover-error">'
         + '&#9888;&#65039; <strong>TMDB API key not configured.</strong><br>'
         + 'Go to <strong>Dashboard &rarr; Plugins &rarr; Upcoming Movies &amp; Recommendations</strong> and enter your TMDB API key.<br>'
-        + '<a href="#/configurationpage?name=Upcoming Movies %26 Recommendations" style="color:#90caf9">Open Plugin Settings &rarr;</a>'
-        + '</div>';
+    // ──── OVERVIEW MODAL ────
+
+    function showOverviewModal(opts) {
+        var overlay = document.createElement('div');
+        overlay.className = 'htv-modal-overlay';
+        
+        var modalHtml = '<div class="htv-modal-content">';
+        modalHtml += '<button class="htv-modal-close" aria-label="Close">\u00D7</button>';
+        
+        if (opts.backdropUrl) {
+            modalHtml += '<div class="htv-modal-backdrop" style="background-image: url(\'' + escapeHtml(opts.backdropUrl) + '\');"></div>';
+        } else {
+            modalHtml += '<div class="htv-modal-backdrop" style="background: #222;"></div>';
+        }
+
+        modalHtml += '<div class="htv-modal-body">';
+        
+        if (opts.posterUrl) {
+            modalHtml += '<img class="htv-modal-poster" src="' + escapeHtml(opts.posterUrl) + '" alt="Poster" />';
+        } else {
+            modalHtml += '<div class="htv-modal-poster dc-no-poster">\uD83C\uDFAC</div>';
+        }
+
+        modalHtml += '<div class="htv-modal-info">';
+        modalHtml += '<h1 class="htv-modal-title">' + escapeHtml(opts.title) + '</h1>';
+        if (opts.date) modalHtml += '<div class="htv-modal-date">' + escapeHtml(opts.date) + '</div>';
+        
+        var overviewText = opts.overview || "No overview available.";
+        modalHtml += '<div class="htv-modal-overview">' + escapeHtml(overviewText) + '</div>';
+
+        // Actions
+        var actionsHtml = '';
+        var isRequested = opts.isRequested || false; // Inherit state from DOM button if we wanted to
+        var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
+        if (existingBtn && existingBtn.classList.contains('requested')) {
+            actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + opts.tmdbId + '" disabled>&#10003; Requested</button>';
+        } else {
+            actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + opts.tmdbId + '">Request</button>';
+        }
+
+        if (!opts.isUpcoming && opts.streamBaseUrl) {
+            actionsHtml += '<a href="' + opts.streamBaseUrl + '/movie/' + opts.tmdbId + '" target="_blank" class="btn-stream">Stream</a>';
+        }
+
+        modalHtml += '<div class="htv-modal-actions">' + actionsHtml + '</div>';
+        
+        modalHtml += '</div></div></div>';
+        overlay.innerHTML = modalHtml;
+        document.body.appendChild(overlay);
+
+        // Force reflow and transition
+        window.getComputedStyle(overlay).opacity;
+        overlay.classList.add('show');
+
+        var closeFunc = function(e) {
+            if (e && e.target !== overlay && !e.target.closest('.htv-modal-close')) return;
+            overlay.classList.remove('show');
+            setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
+        };
+        overlay.addEventListener('click', closeFunc);
+    }
 
     var STAR_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
@@ -643,6 +756,7 @@
      *   isUpcoming {bool}
      *   jellyfinId {string}
      *   voteAverage {number}
+     *   overview {string}
      */
     function buildCard(opts) {
         var tmdbId       = opts.tmdbId;
@@ -650,6 +764,7 @@
         var posterUrl    = opts.posterUrl;
         var backdropUrl  = opts.backdropUrl;
         var date         = opts.date;
+        var overview     = opts.overview;
         var streamBaseUrl = opts.streamBaseUrl || '';
         var isUpcoming   = !!opts.isUpcoming;
         var isAvailable  = !!opts.isAvailable;
@@ -666,18 +781,19 @@
 
         if (!isUpcoming) {
             if (isAvailable && jellyfinId) {
-                // Native Jellyfin Card behavior: No block buttons. Just the hidden hover play overlay.
+                // Play button to keep height uniform
+                actionsHtml += '<button class="btn-play" data-jellyfin="' + jellyfinId + '">Play</button>';
                 playHtml = '<div class="dc-overlay"><div class="dc-play-btn">' + PLAY_SVG + '</div></div>';
             } else if (tmdbId) {
-                // Unavailable Rec: Show Request and Stream buttons below the title
-                actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+                // Unavailable Rec: Show Request and Stream buttons side-by-side
+                actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 if (streamBaseUrl) {
                     actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream">Stream</a>';
                 }
             }
         } else if (tmdbId) {
             // Upcoming: Just Request block button
-            actionsHtml += '<button class="jellyseerr-request-button jellyseerr-button-request btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+            actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
         }
 
         var posterHtml = posterUrl
@@ -696,10 +812,21 @@
             + (isUpcoming && date ? '<div class="dc-date">' + date + '</div>' : '')
             + (actionsHtml ? '<div class="dc-action-bar">' + actionsHtml + '</div>' : '');
 
-        // Whole-card click → Jellyfin detail (for Native items only)
-        if (!isUpcoming && isAvailable) {
-            card.querySelector('.dc-poster').addEventListener('click', function(e) {
-                if (jellyfinId) window.location.hash = '#/details?id=' + jellyfinId;
+        // Poster Click Routing
+        card.querySelector('.dc-poster').addEventListener('click', function(e) {
+            if (!isUpcoming && isAvailable && jellyfinId) {
+                window.location.hash = '#/details?id=' + jellyfinId;
+            } else {
+                showOverviewModal(opts);
+            }
+        });
+
+        // Action Bar Play Route (Mobile/Direct)
+        var btnPlay = card.querySelector('.btn-play');
+        if (btnPlay && jellyfinId) {
+            btnPlay.addEventListener('click', function(e) {
+                e.stopPropagation();
+                window.location.hash = '#/details?id=' + jellyfinId;
             });
         }
 
@@ -739,6 +866,7 @@
                 posterUrl:    posterUrl,
                 backdropUrl:  backdropUrl,
                 date:         movie.release_date || null,
+                overview:     movie.overview,
                 streamBaseUrl: streamBaseUrl,
                 isUpcoming:   !!isUpcoming,
                 isAvailable:  movie.isAvailable,
@@ -926,72 +1054,36 @@
                 }
             }, 500);
         } else {
-            // Sidebar Placement - Secondary Links (Calendar, Live Downloads, Discover)
+            // Sidebar Placement
             var sbInterval = setInterval(function() {
-                var container = document.querySelector('.customMenuOptions');
-                if (container && !document.getElementById('htv-calendar-link')) {
+                var menu = document.querySelector('.navMenu');
+                if (menu && !menu.querySelector('.discover-sidebar-tab')) {
                     clearInterval(sbInterval);
-                    var watchlist = container.querySelector('[data-name="watchlist"]');
-                    
-                    var LINKS = [
-                        {
-                            id: "htv-calendar-link",
-                            label: "Calendar",
-                            href: "#/userpluginsettings.html?pageUrl=/JellyfinEnhanced/calendarPage",
-                            icon: "event"
-                        },
-                        {
-                            id: "htv-downloads-link",
-                            label: "Live Downloads",
-                            href: "#/userpluginsettings.html?pageUrl=/JellyfinEnhanced/downloadsPage",
-                            icon: "downloading"
-                        },
-                        {
-                            id: "htv-discover-link",
-                            label: "Discover",
-                            href: "#/discover",
-                            icon: "explore",
-                            isDiscover: true
-                        }
-                    ];
-
-                    LINKS.forEach(function(cfg, i) {
-                        if (document.getElementById(cfg.id)) return;
-
-                        var a = document.createElement("a");
-                        a.id = cfg.id;
-                        a.href = cfg.href;
-                        a.className = "emby-linkbutton navMenuOption lnkMediaFolder discover-sidebar-tab";
-                        a.title = cfg.label;
-
-                        a.innerHTML = 
-                            '<i class="md-icon navMenuOptionIcon material-icons">' + cfg.icon + '</i>' +
-                            '<span class="navMenuOptionText">' + cfg.label + '</span>';
-
-                        if (cfg.isDiscover) {
-                            a.addEventListener('click', function(e) {
-                                e.preventDefault();
-                                var drawer = document.querySelector('.appDrawer-open');
-                                if (drawer) drawer.classList.remove('appDrawer-open');
-                                window.location.hash = '#/discover';
-                                setTimeout(mountNativeDiscoverView, 50);
-                            });
-                        }
-
-                        // Insert in order directly after Watchlist
-                        if (watchlist) {
-                            if (i === 0) {
-                                watchlist.after(a);       // Calendar
-                            } else {
-                                // Insert sequentially
-                                var prev = document.getElementById(LINKS[i-1].id);
-                                if (prev) prev.after(a);
-                                else container.appendChild(a);
-                            }
-                        } else {
-                            container.appendChild(a);
-                        }
+                    var link = document.createElement('a');
+                    link.className = 'navMenuOption emby-button discover-sidebar-tab';
+                    link.title = 'Discover';
+                    link.innerHTML = '<span class="navMenuOptionIcon material-icons">explore</span><span class="navMenuOptionText">Discover</span>';
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        var drawer = document.querySelector('.appDrawer-open');
+                        if (drawer) drawer.classList.remove('appDrawer-open');
+                        window.location.hash = '#/discover';
+                        setTimeout(mountNativeDiscoverView, 50);
                     });
+                    
+                    var container = document.querySelector('.customMenuOptions');
+                    var watchlist = container ? container.querySelector('[data-name="watchlist"]') : null;
+                    
+                    if (watchlist) {
+                        watchlist.after(link);
+                    } else if (container) {
+                        container.appendChild(link);
+                    } else {
+                        // Fallback logic
+                        var homeLink = menu.querySelector('a[href="#/home"]');
+                        if (homeLink && homeLink.nextSibling) menu.insertBefore(link, homeLink.nextSibling);
+                        else menu.appendChild(link);
+                    }
                     
                     window._discoverNavInjected = true;
                 }
