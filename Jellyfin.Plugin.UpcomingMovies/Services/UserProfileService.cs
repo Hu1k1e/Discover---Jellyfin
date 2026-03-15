@@ -23,7 +23,17 @@ public class UserProfileService
     private const double DecayFactor = 0.92;
 
     // How much weight a fresh watch adds (directors get 2×, actors 1×, genres 1×, language 1×)
-    private const double BaseWatchWeight = 3.0;
+    private const double BaseWatchWeight = 5.0;
+
+    // Log-scale normaliser for use in scoring.
+    // Maps raw accumulated weights onto a compressed curve so a user who watches
+    // 10 animated movies scores ~2.6× the person with 1 watch instead of 10×.
+    //   weight 5  (1 watch)   → ~8.5 pts/genre
+    //   weight 23 (3 watches) → ~14 pts/genre
+    //   weight 65 (10 watches)→ ~18 pts/genre
+    // Formula: log10(1 + w) × 11.6  — chosen so that weight 5 ≈ 8.5
+    public static double NormalizedWeight(double rawWeight)
+        => Math.Max(0, Math.Log10(1.0 + rawWeight) * 11.6);
 
     // TMDB genre ID <-> Jellyfin genre name mapping (TMDB genre IDs are stable and won't change)
     public static readonly Dictionary<string, int> JellyfinNameToTmdbGenreId = new(StringComparer.OrdinalIgnoreCase)

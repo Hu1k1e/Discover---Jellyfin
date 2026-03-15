@@ -574,5 +574,42 @@ Added a hard language allowlist in `AddCandidate()` in `TmdbController.cs`. Any 
 
 All other languages (Spanish, French, Chinese, etc.) are silently excluded from the recommendation candidate pool.
 
+---
+
+## Phase 28 — Balanced Multi-Genre Recommendation Engine (2026-03-15) ✅
+
+**Latest Release: v1.0.41**
+
+### Problem Solved
+Watching 2–3 movies in the same genre caused that genre to dominate all 60 recommendation slots (linear weight accumulation snowballed). Now 2 animated movies watched → animation is preferred, but secondary genres, director/actor signals, and quality/popular films still appear.
+
+### Changes
+
+| Area | Implementation |
+|------|---------------|
+| **Log-scale genre weights** | `UserProfileService.NormalizedWeight(w) = log10(1+w) × 11.6` — compresses raw weights onto a curve where 10 watches of one genre scores ~2.6× the user who watched 1 (not 10×). Exposed as `static` for use in scoring. |
+| **`BaseWatchWeight` raised 3→5** | Larger per-watch signal so the log curve has room to work; decay (×0.92) unchanged. |
+| **NW() alias in TmdbController** | `private static double NW(double w) => UserProfileService.NormalizedWeight(w)` — applied to both genre and language scoring. |
+| **Source 7: Popular high-rated (always-on)** | `GET /discover/movie?sort_by=popularity.desc&vote_average.gte=7.0&vote_count.gte=200` with +8 source bonus. Runs for ALL users (not just new), guaranteeing a broad quality pool for the wildcard tier. |
+| **3-tier diversity slot allocation** | Final 60 results split: 30 top-scored (any genre) + 20 secondary-genre (movies without the #1 genre tag) + 10 wildcard (va≥7.0, pop≥40). Backfill on each tier prevents empty slots. |
+| **Interleaved output** | Tier 1/2/3 are interleaved T1,T2,T3,T1,T2,T3… so the grid looks visually diverse rather than showing all animated movies first. |
+| **Rebalanced weights** | Vote average ×7 (was ×6), Popularity ×0.6 (was ×0.5), Recency +10/−6 (was +12/−8). |
+
+### Updated Scoring Formula
+
+| Factor | Formula | Notes |
+|--------|---------|-------|
+| Genre match | `NW(weight) × 2.0` per genre | Log-normalised — no snowball |
+| Language affinity | `NW(weight) × 6.0` | Log-normalised |
+| Director source | +25 | Unchanged |
+| Actor source | +20 | Unchanged |
+| Seed /recommendations | +28 | Slight trim from +30 |
+| Seed /similar | +15 | Unchanged |
+| Popular source (new) | +8 | Always-on wildcard feeder |
+| Trending (new users) | +5 | Unchanged |
+| Vote average | `× 7.0` → max 70 pts | |
+| Popularity (cap 100) | `× 0.6` → max 60 pts | |
+| Released ≤2 years | +10 | |
+| Released >10 years | −6 | |
 
 

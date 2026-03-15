@@ -84,19 +84,30 @@ public class TmdbController : ControllerBase
         }
     }
 
+    // ── Inline scoring helper ────────────────────────────────────────────────────────
+    // Compresses raw accumulated weights onto a log10 curve so a user who watches
+    // 10 animated movies only scores ~2× more than someone with 1 watch (not 10×).
+    private static double NW(double rawWeight)
+        => UserProfileService.NormalizedWeight(rawWeight);
+
     /// <summary>
-    /// Phase 21 — Intelligent recommendation engine.
+    /// Phase 28 — Balanced, diverse recommendation engine.
     /// Loads the requesting user's server-side taste profile (built from watch history)
     /// and uses it to produce a personalized, scored candidate pool from TMDB.
     ///
     /// Scoring factors (applied to every candidate):
-    ///   • Genre weights   — how much the user watches each genre (1.5× per genre match)
-    ///   • Director bonus  — movies from favourite directors have +50 source bonus
-    ///   • Actor bonus     — movies with favourite actors have +40 source bonus
-    ///   • Language weight — preferred language multiplier (2.0×)
-    ///   • Vote average    — quality signal (×5)
-    ///   • Popularity      — capped at 100 (×0.3)
-    ///   • Recency         — ≤2 years old +20, >10 years old −10
+    ///   • Genre weights   — log-normalized per matching genre (prevents single-genre dominance)
+    ///   • Director bonus  — movies from favourite directors have +25 source bonus
+    ///   • Actor bonus     — movies with favourite actors have +20 source bonus
+    ///   • Language weight — log-normalized preferred language multiplier (×6)
+    ///   • Vote average    — quality signal (×7)
+    ///   • Popularity      — capped at 100 (×0.6)
+    ///   • Recency         — ≤2 years old +10, >10 years old −6
+    ///
+    /// Final 60 results assembled via 3-tier diversity slot allocation:
+    ///   • 30 top-score slots (any genre)
+    ///   • 20 secondary-genre slots (from genres outside top-1 weighted)
+    ///   • 10 wildcard slots (high quality+popularity, genre-agnostic)
     /// </summary>
     [HttpGet("recommendations")]
     [Authorize]
@@ -269,6 +280,26 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] trending fallback failed"); }
             });
 
+            // ── Source 7: Popular + high-quality movies, always-on (+8) ─────────────────────
+            // Guarantees a pool of broadly appealing movies for the wildcard diversity tier,
+            // even for users with a well-established profile. Without this, the wildcard tier
+            // had nothing to draw from once the trending source was suppressed.
+            var popularTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=popularity.desc&vote_average.gte=7.0&vote_count.gte=200&page={page}";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 8.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] popular source failed"); }
+            });
+
             // Run all sources in parallel for speed
             await Task.WhenAll(
                 Task.WhenAll(seedTasks),
@@ -276,13 +307,21 @@ public class TmdbController : ControllerBase
                 genreTask,
                 directorTask,
                 actorTask,
-                trendingTask
+                trendingTask,
+                popularTask
             ).ConfigureAwait(false);
 
             // ── Scoring engine ─────────────────────────────────────────────────────────────
+            // Genre weights are log-normalised via NW() to prevent a single repeated genre
+            // from dominating all 60 output slots.
             var today = DateTime.UtcNow;
 
-            var scored = candidateElements.Select(kv =>
+            // Determine the single highest-weight genre so we can spread secondary genres
+            var topGenreId = profile.GenreWeights.Count > 0
+                ? profile.GenreWeights.OrderByDescending(kv => kv.Value).First().Key
+                : -1;
+
+            var allScored = candidateElements.Select(kv =>
             {
                 var movieId = kv.Key;
                 var m = kv.Value;
@@ -290,59 +329,143 @@ public class TmdbController : ControllerBase
                 // Start with source bonus (director/actor/seed sourcing)
                 double score = candidateSourceBonus.GetValueOrDefault(movieId);
 
-                // Genre match (× 2.0 — meaningful but lets other factors contribute too)
+                // Genre match — log-normalised weight × 2.0 per matching genre
+                // This means a user who watched 10 animated movies only scores ~2× more
+                // for genre than someone who watched 1, preventing total genre dominance.
+                bool hasTopGenre = false;
                 if (m.TryGetProperty("genre_ids", out var genreArr))
                 {
                     foreach (var g in genreArr.EnumerateArray())
                     {
                         if (g.TryGetInt32(out var gid))
-                            score += profile.GenreWeights.GetValueOrDefault(gid) * 2.0;
+                        {
+                            score += NW(profile.GenreWeights.GetValueOrDefault(gid)) * 2.0;
+                            if (gid == topGenreId) hasTopGenre = true;
+                        }
                     }
                 }
 
-                // Language affinity (4× multiplier — strong signal: preferred language beats quality for unpreferred)
+                // Language affinity — log-normalised × 6.0
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
-                    score += profile.LanguageWeights.GetValueOrDefault(lang) * 4.0;
+                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 6.0;
                 }
 
-                // Vote average (0–10 → 0–60 pts) — strong quality signal
-                if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out var va))
-                    score += va * 6.0;
+                // Vote average (0–10 → 0–70 pts) — core quality signal
+                double va = 0;
+                if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out va))
+                    score += va * 7.0;
 
-                // Popularity (capped at 100 → max 50 pts) — reflects cultural relevance
-                if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out var pop))
-                    score += Math.Min(pop, 100) * 0.5;
+                // Popularity (capped at 100 → max 60 pts)
+                double pop = 0;
+                if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out pop))
+                    score += Math.Min(pop, 100) * 0.6;
 
-                // Recency bonus/penalty (gentle — recent is preferred but old classics still show)
+                // Recency bonus/penalty (gentle nudge only — classics still surface via quality)
                 if (m.TryGetProperty("release_date", out var rdProp) &&
                     DateTime.TryParse(rdProp.GetString(), out var releaseDate))
                 {
                     var yearsOld = (today - releaseDate).TotalDays / 365.25;
-                    if (yearsOld <= 2) score += 12;
-                    else if (yearsOld > 10) score -= 8;
+                    if (yearsOld <= 2) score += 10;
+                    else if (yearsOld > 10) score -= 6;
                 }
 
-                return (movieId, score, element: m);
+                return (movieId, score, element: m, hasTopGenre, va, pop);
             })
             .OrderByDescending(x => x.score)
-            .Take(60)
-            .Select(x => x.element)
             .ToList();
+
+            // ── 3-tier diversity slot allocation ───────────────────────────────────────────
+            // Tier 1: 30 top-scored picks (any genre)  — represents the user's core taste
+            // Tier 2: 20 secondary-genre picks          — genres the user watches but isn't obsessed with
+            // Tier 3: 10 wildcard picks                 — high quality/popular regardless of genre
+            //
+            // This guarantees that even if the user watches 20 animated movies, only ~30 of
+            // 60 slots favour that heavily; the remaining 30 come from other areas.
+
+            var usedIds   = new HashSet<int>();
+            var tier1     = new List<JsonElement>();
+            var tier2     = new List<JsonElement>();
+            var tier3     = new List<JsonElement>();
+
+            // Tier 1 — top 30 by pure score
+            foreach (var x in allScored)
+            {
+                if (tier1.Count >= 30) break;
+                if (usedIds.Add(x.movieId))
+                    tier1.Add(x.element);
+            }
+
+            // Tier 2 — scored movies that DON'T exclusively belong to the #1 genre
+            // (i.e. they have some profile affinity outside the dominant genre)
+            foreach (var x in allScored)
+            {
+                if (tier2.Count >= 20) break;
+                if (!usedIds.Contains(x.movieId) && !x.hasTopGenre)
+                {
+                    usedIds.Add(x.movieId);
+                    tier2.Add(x.element);
+                }
+            }
+            // If tier 2 is still short (user only watches one genre), backfill from remaining scored
+            foreach (var x in allScored)
+            {
+                if (tier2.Count >= 20) break;
+                if (!usedIds.Contains(x.movieId))
+                {
+                    usedIds.Add(x.movieId);
+                    tier2.Add(x.element);
+                }
+            }
+
+            // Tier 3 — wildcard: high quality (va ≥ 7.0) + popular (pop ≥ 40) regardless of genre
+            foreach (var x in allScored
+                .Where(x => x.va >= 7.0 && x.pop >= 40)
+                .OrderByDescending(x => x.va * 0.6 + x.pop * 0.4))
+            {
+                if (tier3.Count >= 10) break;
+                if (!usedIds.Contains(x.movieId))
+                {
+                    usedIds.Add(x.movieId);
+                    tier3.Add(x.element);
+                }
+            }
+            // Backfill tier 3 from any remaining if quality filter left it short
+            foreach (var x in allScored)
+            {
+                if (tier3.Count >= 10) break;
+                if (!usedIds.Contains(x.movieId))
+                {
+                    usedIds.Add(x.movieId);
+                    tier3.Add(x.element);
+                }
+            }
+
+            // Interleave tiers so the grid looks varied: T1, T2, T3, T1, T2, T3 …
+            var diversified = new List<JsonElement>(60);
+            int i1 = 0, i2 = 0, i3 = 0;
+            while (diversified.Count < 60)
+            {
+                bool added = false;
+                if (i1 < tier1.Count) { diversified.Add(tier1[i1++]); added = true; }
+                if (i2 < tier2.Count) { diversified.Add(tier2[i2++]); added = true; }
+                if (i3 < tier3.Count) { diversified.Add(tier3[i3++]); added = true; }
+                if (!added) break; // no more candidates at all
+            }
 
             var finalJson = JsonSerializer.Serialize(new
             {
-                results = scored,
-                total_results = scored.Count,
+                results = diversified,
+                total_results = diversified.Count,
                 page,
                 total_pages = 500
             });
 
             _logger.LogInformation(
-                "[UpcomingMovies] Recommendations for user {UserId}: {Count} scored " +
-                "(watched={Watched}, genres={Genres}, dirs={Dirs}, actors={Actors})",
-                userId, scored.Count,
+                "[UpcomingMovies] Recommendations for user {UserId}: {Count} diversified " +
+                "(tier1={T1}, tier2={T2}, tier3={T3}, watched={Watched}, genres={Genres}, dirs={Dirs}, actors={Actors})",
+                userId, diversified.Count, tier1.Count, tier2.Count, tier3.Count,
                 profile.TotalWatched,
                 profile.GenreWeights.Count,
                 profile.DirectorWeights.Count,
