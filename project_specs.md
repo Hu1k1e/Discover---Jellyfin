@@ -368,15 +368,99 @@ Returns top 60, sorted by score (highest first)
 
 **Solution — eliminated DI registration entirely:**
 
-| Old (broken) | New (definitive) |
-|---|---|
-| `PluginServiceRegistrator.cs` implements `IPluginServiceRegistrator` | **Deleted** — `Plugin.cs` owns all DI wiring |
-| `UserDataSavedConsumer : IHostedService` | Plain class with public `OnUserDataSaved` — no Jellyfin interface |
-| `serviceCollection.AddHostedService<...>()` | `userDataManager.UserDataSaved += _consumer.OnUserDataSaved` in Plugin constructor |
-| `TmdbController` gets `UserProfileService` via DI | Uses `Plugin.ProfileService` static property (nullable, null-safe) |
+---
 
-`Plugin.cs` now injects `IUserDataManager`, `ILibraryManager`, `IHttpClientFactory`, `ILoggerFactory` (Jellyfin supports extra constructor params on plugins), creates both services, and wires the event — zero new NuGet packages needed.
+## Phase 21 — Intelligent Per-User Recommendation Engine ✅ (Final: v1.0.33)
 
-**Latest Release: v1.0.31** — Phase 21.3 definitive build fix.
+### Architecture — Event-Driven, Fully Server-Side
 
-- Test Request modal (Destination Server / Quality Profile / Root Folder dropdowns)
+```
+[User finishes watching a movie in Jellyfin]
+        ↓
+IUserDataManager.UserDataSaved event fires (wired in Plugin constructor)
+        ↓
+UserDataSavedConsumer checks e.UserData.Played == true + item is Movie
+        ↓
+Fetches genre IDs from BaseItem.Genres + calls TMDB /movie/{id}/credits
+  for director and top-5 actor TMDB person IDs
+        ↓
+UserProfileService.UpdateWithWatch() applies exponential decay (×0.92)
+  to all existing weights, then adds new genre/director/actor signals
+        ↓
+Profile saved as {userId}.json in plugin data folder (server-side, GUID-named)
+        ↓
+[User opens Discover page]
+        ↓
+Frontend sends userId → GET /UpcomingMovies/tmdb/recommendations?userId=...
+        ↓
+TmdbController loads profile, fetches 6 TMDB sources in parallel,
+  scores all candidates, returns top 60 sorted by score
+```
+
+### Files
+
+| File | Role |
+|------|------|
+| `Model/UserProfileData.cs` | Profile schema: genre/director/actor/language weights, watch history (last 200) |
+| `Services/UserProfileService.cs` | Read/write JSON profiles with exponential decay; top-N helpers |
+| `Services/UserDataSavedConsumer.cs` | Plain class wired via Plugin constructor; `OnUserDataSaved` updates profile on watch |
+| `Plugin.cs` | Owns `UserProfileService` (static `Plugin.ProfileService`), wires event consumer |
+| `Api/TmdbController.cs` | `GetRecommendations` endpoint with 6-source fetch + scoring; `/profile` debug endpoint |
+| `Web/discoverPage.js` | `fetchRecommendations` simplified to single server call with `userId` |
+
+### Profile Signals Collected Per Watch
+
+| Signal | Source | Status |
+|--------|--------|--------|
+| Genre IDs | `BaseItem.Genres` → mapped to TMDB IDs | ✅ Active |
+| Director TMDB person IDs | TMDB `/movie/{id}/credits` (crew, job=Director) | ✅ Active |
+| Actor TMDB person IDs | TMDB `/movie/{id}/credits` (cast, first 5) | ✅ Active |
+| Language | Defaults to `"en"` (Jellyfin API changed in 10.11) | ⚠️ Simplified |
+
+### Scoring Formula (per TMDB candidate)
+
+| Factor | Points | Notes |
+|--------|--------|-------|
+| Director source bonus | +25 | Movie came from `/discover?with_people=topDirs` |
+| Actor source bonus | +20 | Movie came from `/discover?with_people=topActors` |
+| Seed /recommendations | +30 | Movie came from `/movie/{watchedSeed}/recommendations` |
+| Seed /similar | +15 | Movie came from `/movie/{watchedSeed}/similar` |
+| Trending fallback | +5 | New users with 0 watched movies only |
+| Genre match | `weight × 2.0` | Per matching genre, using profile weight |
+| Language affinity | `weight × 2.0` | Preferred language from profile |
+| Vote average (0–10) | `× 6.0` → max ~60 pts | Quality signal |
+| Popularity (capped 100) | `× 0.5` → max 50 pts | Cultural relevance |
+| Released ≤ 2 years | +12 | Recency bonus |
+| Released > 10 years | −8 | Age penalty (classics still surface via quality) |
+| Already watched | **Excluded** | Filtered before scoring |
+
+### Types Removed for Jellyfin 10.11.6 Compatibility
+
+The following Jellyfin types moved to `Jellyfin.Data.Enums` or were removed from `Jellyfin.Controller` in 10.10+:
+
+| Type | Reason Removed |
+|------|---------------|
+| `IPluginServiceRegistrator` | Lives in `Jellyfin.Common`, not `Jellyfin.Controller` — deleted `PluginServiceRegistrator.cs` |
+| `IServerEntryPoint` | Removed from Jellyfin in 10.10+ — replaced with Plugin constructor wiring |
+| `IHostedService` | Same issue — not needed with Plugin constructor pattern |
+| `ILibraryManager.GetPeople()` / `InternalPeopleQuery` | API changed — replaced with TMDB credits API |
+| `PersonKind` | Moved to `Jellyfin.Data.Enums` — removed Jellyfin people lookup entirely |
+| `BaseItem.OriginalLanguage` | Not a property on Movie in 10.11 — defaults to `"en"` |
+| `UserDataSaveReason` | Moved to `Jellyfin.Data.Enums` — replaced with `e.UserData.Played` check |
+
+### Debug Endpoint
+`GET /UpcomingMovies/tmdb/profile?userId={jellyfinUserId}` — returns top genres, directors, actors, languages, and recent watch history. Requires Jellyfin auth token.
+
+**Latest Release: v1.0.33** — Phase 21 complete (intelligent per-user recommendation engine, build stable).
+
+---
+
+**To install:**
+1. Dashboard → Plugins → Repositories → add manifest URL above
+2. Catalog → Upcoming Movies & Recommendations → Install latest
+3. Restart Jellyfin
+
+**Pending user actions:**
+- Verify TMDB API key is saved in plugin settings
+- Verify Jellyseerr URL + API key are saved
+- Test Request modal (Destination Server / Quality Profile / Root Folder dropdowns)
