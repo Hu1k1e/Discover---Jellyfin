@@ -62,6 +62,15 @@ public class UserProfileService
         _logger.LogInformation("[UpcomingMovies] Profile store at: {Dir}", _profilesDir);
     }
 
+    /// <summary>Returns all user IDs that have a profile file stored on disk.</summary>
+    public List<string> GetAllProfileUserIds()
+    {
+        return Directory.GetFiles(_profilesDir, "*.json")
+            .Select(f => Path.GetFileNameWithoutExtension(f) ?? "")
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+    }
+
     public UserProfileData GetProfile(string userId)
     {
         var path = GetProfilePath(userId);

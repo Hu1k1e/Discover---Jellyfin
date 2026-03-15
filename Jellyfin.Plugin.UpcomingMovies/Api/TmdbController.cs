@@ -794,5 +794,90 @@ public class TmdbController : ControllerBase
         await consumer.FulfillAsync(tmdbId, jellyfinItemId).ConfigureAwait(false);
         return Ok(new { message = $"Watchlist fulfilled for tmdbId={tmdbId}" });
     }
+
+    // ── Profile Debug Endpoints ─────────────────────────────────────────────────
+    // GET /UpcomingMovies/tmdb/profile?userId=<jellyfinUserId>
+    //   Returns the full scored taste profile for a user in readable JSON.
+    //   Use this to verify language weights (LanguageWeights), genre weights,
+    //   top directors/actors, and recent watch history.
+    //
+    // GET /UpcomingMovies/tmdb/profile/all
+    //   Lists all user IDs that have a stored profile file.
+
+    /// <summary>
+    /// Returns the full taste profile for a Jellyfin user in human-readable JSON.
+    /// Useful for debugging recommendation quality and verifying language repair.
+    /// URL: GET /UpcomingMovies/tmdb/profile?userId={jellyfinUserId}
+    /// </summary>
+    [HttpGet("profile")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public IActionResult GetUserProfile([FromQuery] string userId = "")
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return BadRequest(new { error = "userId query param is required" });
+
+        var svc = ProfileService;
+        if (svc is null)
+            return StatusCode(503, new { error = "ProfileService not initialised" });
+
+        var profile = svc.GetProfile(userId);
+
+        // Convert genre IDs to readable names for display
+        var genresByName = profile.GenreWeights
+            .OrderByDescending(kv => kv.Value)
+            .ToDictionary(
+                kv => UserProfileService.TmdbGenreIdToName.TryGetValue(kv.Key, out var name)
+                      ? $"{name} (id={kv.Key})" : $"genre_{kv.Key}",
+                kv => Math.Round(kv.Value, 2));
+
+        var languagesSorted = profile.LanguageWeights
+            .OrderByDescending(kv => kv.Value)
+            .ToDictionary(kv => kv.Key, kv => Math.Round(kv.Value, 2));
+
+        var directorsSorted = profile.DirectorWeights
+            .OrderByDescending(kv => kv.Value)
+            .Take(10)
+            .ToDictionary(kv => $"person_{kv.Key}", kv => Math.Round(kv.Value, 2));
+
+        var actorsSorted = profile.ActorWeights
+            .OrderByDescending(kv => kv.Value)
+            .Take(10)
+            .ToDictionary(kv => $"person_{kv.Key}", kv => Math.Round(kv.Value, 2));
+
+        return Ok(new
+        {
+            userId,
+            totalWatched      = profile.TotalWatched,
+            watchedTmdbIds    = profile.WatchedTmdbIds.TakeLast(20).ToList(),
+            languageWeights   = languagesSorted,
+            genreWeights      = genresByName,
+            topDirectors      = directorsSorted,
+            topActors         = actorsSorted,
+            recentWatches     = profile.RecentWatches?.Take(10).Select(w => new {
+                w.TmdbId, w.Language, watchedAt = w.WatchedAt.ToString("yyyy-MM-dd")
+            }),
+            watchlistTmdbIds  = profile.WatchlistTmdbIds?.Take(20).ToList()
+        });
+    }
+
+    /// <summary>
+    /// Lists all Jellyfin user IDs that have a stored recommendation profile.
+    /// URL: GET /UpcomingMovies/tmdb/profile/all
+    /// </summary>
+    [HttpGet("profile/all")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult GetAllProfileUsers()
+    {
+        var svc = ProfileService;
+        if (svc is null)
+            return StatusCode(503, new { error = "ProfileService not initialised" });
+
+        var users = svc.GetAllProfileUserIds();
+        return Ok(new { count = users.Count, userIds = users });
+    }
 }
+
 
