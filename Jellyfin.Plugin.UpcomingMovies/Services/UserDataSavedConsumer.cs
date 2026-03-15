@@ -3,25 +3,21 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.Plugin.UpcomingMovies.Services;
 
 /// <summary>
-/// Listens for Jellyfin UserDataSaved events and updates the user's taste profile
-/// automatically whenever a movie is played or marked as watched.
-/// Implements IHostedService (IServerEntryPoint was removed in Jellyfin 10.10+).
+/// Handles Jellyfin UserDataSaved events to keep user taste profiles up to date.
+/// Registered directly by Plugin.cs (not via DI) to avoid Jellyfin version compatibility issues.
 /// </summary>
-public class UserDataSavedConsumer : IHostedService, IDisposable
+public class UserDataSavedConsumer
 {
-    private readonly IUserDataManager _userDataManager;
     private readonly ILibraryManager _libraryManager;
     private readonly UserProfileService _profileService;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -36,27 +32,17 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
         IHttpClientFactory httpClientFactory,
         ILogger<UserDataSavedConsumer> logger)
     {
-        _userDataManager = userDataManager;
         _libraryManager = libraryManager;
         _profileService = profileService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _userDataManager.UserDataSaved += OnUserDataSaved;
-        _logger.LogInformation("[UpcomingMovies] UserDataSaved listener registered — profiles will auto-update on movie watch.");
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        _userDataManager.UserDataSaved -= OnUserDataSaved;
-        return Task.CompletedTask;
-    }
-
-    private void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
+    /// <summary>
+    /// Called by the IUserDataManager.UserDataSaved event whenever a user plays or marks a movie as watched.
+    /// Wired in Plugin.cs constructor.
+    /// </summary>
+    public void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
         // Only care if user actually played or marked-watched
         if (e.SaveReason != UserDataSaveReason.PlaybackFinished &&
@@ -87,7 +73,7 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
 
         // Get director/actor TMDB person IDs from Jellyfin metadata
         var directors = new List<int>();
-        var actors = new List<int>();
+        var actors    = new List<int>();
 
         try
         {
@@ -120,15 +106,11 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
         }
     }
 
-    /// <summary>
-    /// Fallback: fetches credits from TMDB and then updates the profile.
-    /// Called in a background task when Jellyfin metadata has no TMDB person IDs.
-    /// </summary>
     private async Task FetchCreditsAndUpdateAsync(
         string userId, int tmdbId, List<int> genreIds, string language)
     {
         var directors = new List<int>();
-        var actors = new List<int>();
+        var actors    = new List<int>();
 
         try
         {
@@ -136,14 +118,13 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 var client = _httpClientFactory.CreateClient();
-                var url = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
+                var url    = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
                 var response = await client.GetAsync(url).ConfigureAwait(false);
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
 
-                    // Directors from crew
                     if (doc.RootElement.TryGetProperty("crew", out var crew))
                     {
                         foreach (var member in crew.EnumerateArray())
@@ -158,7 +139,6 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
                         }
                     }
 
-                    // Top-billed actors from cast (first 5)
                     if (doc.RootElement.TryGetProperty("cast", out var cast))
                     {
                         foreach (var member in cast.EnumerateArray().Take(5))
@@ -175,15 +155,9 @@ public class UserDataSavedConsumer : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for movie {TmdbId}", tmdbId);
+            _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
         }
 
         _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
-    }
-
-    public void Dispose()
-    {
-        _userDataManager.UserDataSaved -= OnUserDataSaved;
-        GC.SuppressFinalize(this);
     }
 }

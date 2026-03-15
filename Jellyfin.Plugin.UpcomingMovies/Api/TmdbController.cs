@@ -24,20 +24,22 @@ public class TmdbController : ControllerBase
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
     private readonly ILogger<TmdbController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly UserProfileService _profileService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TmdbController"/> class.
+    /// UserProfileService is accessed via Plugin.ProfileService (static) rather than DI
+    /// to avoid referencing Jellyfin.Common types not available in Jellyfin.Controller.
     /// </summary>
     public TmdbController(
         ILogger<TmdbController> logger,
-        IHttpClientFactory httpClientFactory,
-        UserProfileService profileService)
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
-        _profileService = profileService;
     }
+
+    // Convenience accessor — returns Plugin.ProfileService, or null for safe handling below
+    private static UserProfileService? ProfileService => Plugin.ProfileService;
 
     /// <summary>
     /// Proxies a request to TMDB's /discover/movie endpoint filtered to upcoming releases.
@@ -112,16 +114,17 @@ public class TmdbController : ControllerBase
                 return StatusCode(400, new { _needsSetup = true, error = "TMDB API key not configured." });
             }
 
-            // ── Load user profile ──────────────────────────────────────────────────────────
-            var profile = string.IsNullOrWhiteSpace(userId)
+            // ── Load user profile (ProfileService is null only before plugin fully initialises)
+            var svc = ProfileService;
+            var profile = svc is null || string.IsNullOrWhiteSpace(userId)
                 ? new UserProfileData()
-                : _profileService.GetProfile(userId);
+                : svc.GetProfile(userId);
 
-            var watchedIds = new HashSet<int>(profile.WatchedTmdbIds);
-            var seedIds    = _profileService.GetRecentSeedIds(profile, 8);
-            var topGenres  = _profileService.GetTopGenres(profile, 5);
-            var topDirs    = _profileService.GetTopDirectors(profile, 5);
-            var topActors  = _profileService.GetTopActors(profile, 5);
+            var watchedIds  = new HashSet<int>(profile.WatchedTmdbIds);
+            var seedIds     = svc?.GetRecentSeedIds(profile, 8)  ?? new List<int>();
+            var topGenres   = svc?.GetTopGenres(profile, 5)      ?? new List<int>();
+            var topDirs     = svc?.GetTopDirectors(profile, 5)   ?? new List<int>();
+            var topActors   = svc?.GetTopActors(profile, 5)      ?? new List<int>();
             bool hasProfile = profile.TotalWatched > 0;
 
             var client = _httpClientFactory.CreateClient();
@@ -353,17 +356,21 @@ public class TmdbController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return BadRequest(new { error = "userId is required" });
 
-        var profile = _profileService.GetProfile(userId);
+        var svc2 = ProfileService;
+        if (svc2 is null)
+            return Ok(new { userId, totalWatched = 0, message = "Profile service not yet initialised" });
+
+        var profile = svc2.GetProfile(userId);
         return Ok(new
         {
             userId = profile.UserId,
             lastUpdated = profile.LastUpdated,
             totalWatched = profile.TotalWatched,
-            topGenres = _profileService.GetTopGenres(profile, 10)
+            topGenres = svc2.GetTopGenres(profile, 10)
                 .Select(id => new { id, name = UserProfileService.TmdbGenreIdToName.GetValueOrDefault(id, id.ToString()), weight = profile.GenreWeights.GetValueOrDefault(id) }),
-            topDirectors = _profileService.GetTopDirectors(profile, 5)
+            topDirectors = svc2.GetTopDirectors(profile, 5)
                 .Select(id => new { id, weight = profile.DirectorWeights.GetValueOrDefault(id) }),
-            topActors = _profileService.GetTopActors(profile, 5)
+            topActors = svc2.GetTopActors(profile, 5)
                 .Select(id => new { id, weight = profile.ActorWeights.GetValueOrDefault(id) }),
             topLanguages = profile.LanguageWeights
                 .OrderByDescending(kv => kv.Value).Take(5)
