@@ -453,51 +453,67 @@
         return res.json();
     }
 
-    // Build the user signal profile from Jellyfin APIs and call the backend recommendations endpoint
+    // Build rich per-user signal profile from Jellyfin \u2192 send to backend for personalized recommendations
     async function fetchRecommendations(page) {
         page = page || 1;
         var client = window.ApiClient;
         var userId = client && client.getCurrentUserId();
-        var tmdbIds   = [];
+        var tmdbSeeds    = []; // { id, weight }
         var genreWeights = {};
+        var directorWeights = {};
+        var actorWeights    = {};
 
         if (userId) {
             try {
                 var server = client._serverAddress;
                 var token  = client.accessToken();
 
-                // a) Watched movies (last 50)
+                // a) Watch history \u2014 last 100 movies with People for director/actor signals
                 var watchedRes = await fetch(
-                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=50&Recursive=true',
+                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=100&Recursive=true&Fields=ProviderIds,GenreItems,People',
                     { headers: { 'X-Emby-Token': token } }
                 );
                 if (watchedRes.ok) {
-                    var watchedData = await watchedRes.json();
-                    (watchedData.Items || []).forEach(function(item) {
-                        // Extract TMDB ID
+                    var watchedItems = (await watchedRes.json()).Items || [];
+                    watchedItems.forEach(function(item, idx) {
                         var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
-                        if (tid && tid > 0) tmdbIds.push(tid);
-                        // Weight genres by recency (watched)
+                        var w = idx < 20 ? 3 : 1; // recent = stronger signal
+                        if (tid && tid > 0) tmdbSeeds.push({ id: tid, weight: w });
                         (item.GenreItems || []).forEach(function(g) {
                             var gid = GENRE_MAP[g.Name];
-                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + 1;
+                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + w;
+                        });
+                        (item.People || []).forEach(function(person) {
+                            var pid = person.ProviderIds && person.ProviderIds.Tmdb ? parseInt(person.ProviderIds.Tmdb, 10) : null;
+                            if (!pid) return;
+                            if (person.Type === 'Director') directorWeights[pid] = (directorWeights[pid] || 0) + w * 2;
+                            else if (person.Type === 'Actor') actorWeights[pid] = (actorWeights[pid] || 0) + w;
                         });
                     });
                 }
 
-                // b) Favourites / Watchlist (2x weight — stronger signal)
+                // b) Favorites \u2014 5\u00d7 weight (strongest preference signal)
                 var favRes = await fetch(
-                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&IsFavorite=true&Recursive=true&Limit=30',
+                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&IsFavorite=true&Recursive=true&Limit=50&Fields=ProviderIds,GenreItems,People',
                     { headers: { 'X-Emby-Token': token } }
                 );
                 if (favRes.ok) {
-                    var favData = await favRes.json();
-                    (favData.Items || []).forEach(function(item) {
+                    (await favRes.json()).Items.forEach(function(item) {
                         var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
-                        if (tid && tid > 0 && tmdbIds.indexOf(tid) === -1) tmdbIds.push(tid);
+                        var w = 5;
+                        if (tid && tid > 0) {
+                            var ex = tmdbSeeds.find(function(s) { return s.id === tid; });
+                            if (ex) ex.weight += w; else tmdbSeeds.push({ id: tid, weight: w });
+                        }
                         (item.GenreItems || []).forEach(function(g) {
                             var gid = GENRE_MAP[g.Name];
-                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + 2; // 2x for favourites
+                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + w;
+                        });
+                        (item.People || []).forEach(function(person) {
+                            var pid = person.ProviderIds && person.ProviderIds.Tmdb ? parseInt(person.ProviderIds.Tmdb, 10) : null;
+                            if (!pid) return;
+                            if (person.Type === 'Director') directorWeights[pid] = (directorWeights[pid] || 0) + w * 2;
+                            else if (person.Type === 'Actor') actorWeights[pid] = (actorWeights[pid] || 0) + w;
                         });
                     });
                 }
@@ -506,22 +522,30 @@
             }
         }
 
-        // Sort genres by weight descending, take top 5
+        // Sort seeds by weight, extract top signals
+        tmdbSeeds.sort(function(a, b) { return b.weight - a.weight; });
+
         var topGenres = Object.keys(genreWeights)
             .sort(function(a, b) { return genreWeights[b] - genreWeights[a]; })
-            .slice(0, 5)
-            .join('|');
+            .slice(0, 5).join('|');
 
-        // Take top 8 TMDB IDs as movie seeds
-        var seedIds = tmdbIds.slice(0, 8).join(',');
+        var seedIds = tmdbSeeds.slice(0, 8).map(function(s) { return s.id; }).join(',');
 
-        var params = [];
-        if (seedIds) params.push('tmdbIds=' + encodeURIComponent(seedIds));
-        if (topGenres) params.push('genreIds=' + encodeURIComponent(topGenres));
-        params.push('page=' + page);
-        var qs = params.length ? '?' + params.join('&') : '';
+        var topDirectors = Object.keys(directorWeights)
+            .sort(function(a, b) { return directorWeights[b] - directorWeights[a]; })
+            .slice(0, 3).join(',');
 
-        var res = await fetch('/UpcomingMovies/tmdb/recommendations' + qs, {
+        var topActors = Object.keys(actorWeights)
+            .sort(function(a, b) { return actorWeights[b] - actorWeights[a]; })
+            .slice(0, 3).join(',');
+
+        var params = ['page=' + page];
+        if (seedIds)      params.push('tmdbIds='     + encodeURIComponent(seedIds));
+        if (topGenres)    params.push('genreIds='    + encodeURIComponent(topGenres));
+        if (topDirectors) params.push('directorIds=' + encodeURIComponent(topDirectors));
+        if (topActors)    params.push('actorIds='    + encodeURIComponent(topActors));
+
+        var res = await fetch('/UpcomingMovies/tmdb/recommendations?' + params.join('&'), {
             headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
         });
         if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
@@ -534,6 +558,7 @@
     // ─────────────────────────────────────────────
 
     async function openRequestModal(tmdbId, movieTitle, backdropUrl) {
+        closeAnyOpenModal();
         // Fetch Radarr instances for dropdowns
         var radarrInstances = [];
         try {
@@ -735,7 +760,7 @@
         }
 
         if (!opts.isUpcoming && opts.streamBaseUrl) {
-            actionsHtml += '<a href="' + opts.streamBaseUrl + '/movie/' + opts.tmdbId + '" target="_blank" class="btn-stream">Stream</a>';
+            actionsHtml += '<button class="btn-stream" data-stream-url="' + opts.streamBaseUrl + '/movie/' + opts.tmdbId + '">Stream</button>';
         }
 
         modalHtml += '<div class="htv-modal-actions">' + actionsHtml + '</div>';
@@ -754,6 +779,58 @@
             setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
         };
         overlay.addEventListener('click', closeFunc);
+        // Stream button inside overview modal → open stream info modal
+        var modalStreamBtn = overlay.querySelector('.btn-stream[data-stream-url]');
+        if (modalStreamBtn) {
+            modalStreamBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var sUrl = e.currentTarget.dataset.streamUrl;
+                overlay.classList.remove('show');
+                setTimeout(function() {
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    showStreamModal({ title: opts.title, posterUrl: opts.posterUrl, backdropUrl: opts.backdropUrl, streamUrl: sUrl });
+                }, 50);
+            });
+        }
+    }
+
+    // ── MODAL UTILITIES ──
+
+    // Dismiss any open overlay or request modal to prevent stacking
+    function closeAnyOpenModal() {
+        document.querySelectorAll('.htv-modal-overlay, .dcm-backdrop').forEach(function(el) {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        });
+    }
+
+    // Stream info modal — centered overlay with poster + Stream Now button
+    function showStreamModal(opts) {
+        closeAnyOpenModal();
+        var overlay = document.createElement('div');
+        overlay.className = 'htv-modal-overlay';
+        var mHtml = '<div class="htv-modal-content" style="max-width:460px;">';
+        mHtml += '<button class="htv-modal-close" aria-label="Close">\u00D7</button>';
+        mHtml += opts.backdropUrl
+            ? '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background-image:url(\'' + escapeHtml(opts.backdropUrl) + '\');"></div><div class="htv-modal-backdrop-overlay"></div></div>'
+            : '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background:#222;"></div><div class="htv-modal-backdrop-overlay"></div></div>';
+        mHtml += '<div class="htv-modal-body" style="flex-direction:column;align-items:center;text-align:center;margin-top:80px;">';
+        if (opts.posterUrl) mHtml += '<img class="htv-modal-poster" src="' + escapeHtml(opts.posterUrl) + '" alt="Poster" style="width:110px;margin-bottom:16px;" />';
+        mHtml += '<div class="htv-modal-info" style="align-items:center;width:100%;">';
+        mHtml += '<h2 class="htv-modal-title" style="font-size:1.4em;text-align:center;">' + escapeHtml(opts.title) + '</h2>';
+        mHtml += '<p style="color:#aaa;font-size:0.9em;margin:8px 0 20px;">Available to stream on your service</p>';
+        mHtml += '<div class="htv-modal-actions" style="justify-content:center;">';
+        mHtml += '<a href="' + escapeHtml(opts.streamUrl) + '" target="_blank" rel="noopener" style="padding:12px 36px;background:#00C853!important;border-color:#00C853!important;color:#000!important;font-weight:700;border-radius:8px;text-decoration:none;font-size:15px;display:inline-block;">&#9654; Stream Now</a>';
+        mHtml += '</div></div></div></div>';
+        overlay.innerHTML = mHtml;
+        document.body.appendChild(overlay);
+        window.getComputedStyle(overlay).opacity;
+        overlay.classList.add('show');
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay || e.target.closest('.htv-modal-close')) {
+                overlay.classList.remove('show');
+                setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 300);
+            }
+        });
     }
 
     var STAR_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
@@ -797,7 +874,7 @@
                 // Unavailable Rec: Show Request and Stream buttons side-by-side
                 actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 if (streamBaseUrl) {
-                    actionsHtml += '<a href="' + streamBaseUrl + '/movie/' + tmdbId + '" target="_blank" class="btn-stream">Stream</a>';
+                    actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
                 }
             }
         } else if (tmdbId) {
@@ -846,11 +923,11 @@
             openRequestModal(e.currentTarget.dataset.tmdb, title, backdropUrl);
         });
 
-        // Play button
-        var btnPlay = card.querySelector('.btn-play');
-        if (btnPlay) btnPlay.addEventListener('click', function(e) {
+        // Stream button → stream info modal
+        var btnStream = card.querySelector('.btn-stream');
+        if (btnStream) btnStream.addEventListener('click', function(e) {
             e.stopPropagation();
-            window.location.hash = '#/details?id=' + e.currentTarget.dataset.jellyfin;
+            showStreamModal({ title: title, posterUrl: posterUrl, backdropUrl: backdropUrl, streamUrl: e.currentTarget.dataset.streamUrl });
         });
 
         return card;
@@ -1090,15 +1167,6 @@
         var injectWrapper = document.createElement('div');
         injectWrapper.className = 'upcoming-movies-plugin';
         contentTarget.appendChild(injectWrapper);
-
-        // Update Jellyfin's page title natively
-        var titleEl = document.querySelector('.pageTitleWithDefaultLogo');
-        if (titleEl) titleEl.textContent = 'Discover';
-        else {
-            var logo = document.querySelector('.pageTitleWithLogo');
-            if (logo) logo.style.backgroundImage = 'none';
-            if (logo) logo.textContent = 'Discover';
-        }
 
         populateDiscoverContainer(injectWrapper);
     }
