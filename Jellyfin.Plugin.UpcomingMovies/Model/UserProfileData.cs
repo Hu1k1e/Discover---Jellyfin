@@ -38,6 +38,10 @@ public class UserProfileData
     /// <summary>All TMDB movie IDs the user has watched — used to exclude from recommendations.</summary>
     public List<int> WatchedTmdbIds { get; set; } = new();
 
+    /// <summary>TMDB movie IDs the user has added to their watchlist (UserData.Likes=true).
+    /// Used as recommendation seeds at 0.5× watch signal strength.</summary>
+    public List<int> WatchlistTmdbIds { get; set; } = new();
+
     /// <summary>Last 200 watch events, newest first. Used to rebuild weights on demand.</summary>
     public List<WatchEntry> RecentWatches { get; set; } = new();
 

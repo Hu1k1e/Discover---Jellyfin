@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
@@ -13,7 +12,8 @@ namespace Jellyfin.Plugin.UpcomingMovies.Services;
 
 /// <summary>
 /// Handles Jellyfin UserDataSaved events to keep user taste profiles up to date.
-/// Registered directly in Plugin.cs constructor -- no DI interface needed.
+/// Fires on both Played=true (watch signal, 1× weight) and Likes=true (watchlist signal, 0.5× weight).
+/// Registered directly in Plugin.cs constructor — no DI interface needed.
 /// </summary>
 public class UserDataSavedConsumer
 {
@@ -34,24 +34,22 @@ public class UserDataSavedConsumer
     }
 
     /// <summary>
-    /// Called by IUserDataManager.UserDataSaved whenever a user plays or marks a movie as watched.
+    /// Called by IUserDataManager.UserDataSaved whenever user data changes for a library item.
+    /// Handles two signals:
+    ///   - Played = true  → full watch signal (1× weight + exponential decay on all weights)
+    ///   - Likes = true   → watchlist signal  (0.5× weight, additive only, no decay)
     /// </summary>
     public void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
-        // Only process if the item was marked as played (covers both playback-finish and manual mark)
-        if (!e.UserData.Played)
-            return;
-
         // Only movies, not episodes/music/etc.
-        if (e.Item is not Movie movie)
-            return;
+        if (e.Item is not Movie movie) return;
 
         // Need a TMDB ID to be useful
         if (!movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) ||
             !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
             return;
 
-        var userId  = e.UserId.ToString("N");
+        var userId = e.UserId.ToString("N");
 
         // Map Jellyfin genre names → TMDB genre IDs (BaseItem.Genres is string[], always available)
         var genreIds = (movie.Genres ?? Array.Empty<string>())
@@ -59,12 +57,19 @@ public class UserDataSavedConsumer
             .Where(id => id > 0)
             .ToList();
 
-        // Always fetch director/actor from TMDB credits API (avoids Jellyfin.Data.Enums dependency)
-        // Language defaults to "en" -- improved in a future phase if needed
-        Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds));
+        if (e.UserData.Played)
+        {
+            // Full watch signal — strongest taste indicator, triggers decay of old weights
+            Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: false));
+        }
+        else if (e.UserData.Likes == true)
+        {
+            // Watchlist signal — user bookmarked this movie (our /Rating?Likes=true call)
+            Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: true));
+        }
     }
 
-    private async Task FetchCreditsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds)
+    private async Task FetchCreditsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds, bool isWatchlist)
     {
         var directors = new List<int>();
         var actors    = new List<int>();
@@ -118,6 +123,13 @@ public class UserDataSavedConsumer
             _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
         }
 
-        _profileService.UpdateWithWatch(userId, tmdbId, genreIds, "en", directors, actors);
+        if (isWatchlist)
+        {
+            _profileService.UpdateWithWatchlist(userId, tmdbId, genreIds, "en", directors, actors);
+        }
+        else
+        {
+            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, "en", directors, actors);
+        }
     }
 }
