@@ -355,7 +355,28 @@ Returns top 60, sorted by score (highest first)
 1. Dashboard → Plugins → Repositories → add manifest URL above
 
 
+
 **Pending user actions:**
 - Verify TMDB API key is saved in plugin settings
 - Verify Jellyseerr URL + API key are saved
+
+---
+
+## Phase 21.3 — Definitive Build Fix (2026-03-15) ✅
+
+**Root Cause:** `IPluginServiceRegistrator` lives in `Jellyfin.Common` (not `Jellyfin.Controller`). Since the project only references `Jellyfin.Controller`, the interface is unavailable in CI. All previous using-directive fixes were wrong — the package itself was missing.
+
+**Solution — eliminated DI registration entirely:**
+
+| Old (broken) | New (definitive) |
+|---|---|
+| `PluginServiceRegistrator.cs` implements `IPluginServiceRegistrator` | **Deleted** — `Plugin.cs` owns all DI wiring |
+| `UserDataSavedConsumer : IHostedService` | Plain class with public `OnUserDataSaved` — no Jellyfin interface |
+| `serviceCollection.AddHostedService<...>()` | `userDataManager.UserDataSaved += _consumer.OnUserDataSaved` in Plugin constructor |
+| `TmdbController` gets `UserProfileService` via DI | Uses `Plugin.ProfileService` static property (nullable, null-safe) |
+
+`Plugin.cs` now injects `IUserDataManager`, `ILibraryManager`, `IHttpClientFactory`, `ILoggerFactory` (Jellyfin supports extra constructor params on plugins), creates both services, and wires the event — zero new NuGet packages needed.
+
+**Latest Release: v1.0.31** — Phase 21.3 definitive build fix.
+
 - Test Request modal (Destination Server / Quality Profile / Root Folder dropdowns)
