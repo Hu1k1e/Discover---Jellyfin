@@ -53,9 +53,12 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Always start from the latest remote main to avoid non-fast-forward errors.
+          # Tags may be pushed faster than CI can rebase, so we fetch and reset hard
+          # instead of rebasing, ensuring the manifest update is always on the latest state.
           git fetch origin main
           git checkout main
-          git pull origin main --rebase
+          git reset --hard origin/main
           
           VERSION=${{ steps.version.outputs.VERSION }}
           CHECKSUM=${{ steps.checksum.outputs.CHECKSUM }}
@@ -83,7 +86,9 @@ jobs:
           git add manifest.json
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "chore: update manifest for v${{ steps.version.outputs.VERSION }}"
-          git push origin main
+          # Use --force-with-lease so we never overwrite someone else's push,
+          # but we CAN push even if CI's local history fell behind remote main.
+          git push --force-with-lease origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

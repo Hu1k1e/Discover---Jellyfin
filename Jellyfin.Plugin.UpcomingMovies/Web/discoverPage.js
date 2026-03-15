@@ -1353,8 +1353,8 @@
 
                     });
 
-
-            }
+                }   // end if (btnMore)
+            }   // end else if (rec)
             else { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
 

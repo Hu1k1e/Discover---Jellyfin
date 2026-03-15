@@ -1,101 +1,5 @@
 # Project Specifications: Native Upcoming Movies & Recommendations Plugin
 
----
-
-> [!IMPORTANT]
-> **Read the Deployment Process section below before pushing any release.**
-
----
-
-# DEPLOYMENT PROCESS — How to Release a New Version
-
-This is the exact procedure to push a change and have it appear in Jellyfin's plugin catalog. **Follow every step.** Past failures came from skipping steps or doing them out of order.
-
-## Step 1 — Make + Commit Your Changes
-
-```powershell
-git add <changed files>
-git commit -m "fix: description of what changed"
-```
-
-## Step 2 — Push the Main Branch
-
-```powershell
-git push origin main
-```
-
-> If the push is rejected ("non-fast-forward"), pull and rebase first:
-> ```powershell
-> git pull --rebase origin main
-> git push origin main
-> ```
-> PowerShell may show exit code 1 even on success — check the output for `main -> main` to confirm.
-
-## Step 3 — Create + Push a Version Tag
-
-The GitHub Actions workflow **only triggers on `v*` tags**, NOT on regular commits.
-
-```powershell
-git tag v1.0.XX    # replace XX with next version number (e.g. v1.0.48)
-git push origin v1.0.XX
-```
-
-Confirm success: output should include `* [new tag] v1.0.XX -> v1.0.XX`
-
-## Step 4 — Wait for GitHub Actions (~2 minutes)
-
-The workflow (`.github/workflows/build-release.yml`) will automatically:
-1. Build the plugin `.dll` 
-2. Create a ZIP: `jellyfin-plugin-upcoming-movies_v1.0.XX.zip`
-3. Compute the MD5 checksum
-4. **Prepend a new version entry to `manifest.json`** and commit it to `main`
-5. Create a GitHub Release with the ZIP as an asset
-
-## Step 5 — Pull the Actions Bot Commit
-
-After the workflow completes, the Actions bot commits an updated `manifest.json` to `main`. Pull it so local is in sync:
-
-```powershell
-git pull origin main
-```
-
-Verify `manifest.json` starts with `"version": "1.0.XX.0"` — that's the confirmation it worked.
-
-## Step 6 — Verify the Release
-
-Check: `https://api.github.com/repos/Hu1k1e/Discover---Jellyfin/releases?per_page=1`  
-Should show the new release with `"tag_name": "v1.0.XX"` and a non-empty `assets` array.
-
----
-
-## Troubleshooting: Manifest Not Updated (v not appearing in Jellyfin)
-
-**Symptom:** GitHub release exists (ZIP uploaded) but Jellyfin catalog still shows old version.  
-**Cause:** The Actions bot tried to push the manifest update but failed (usually due to a rebase conflict on `main`).  
-**Fix:** Manually add the entry to `manifest.json`:
-
-```json
-{
-  "version": "1.0.XX.0",
-  "changelog": "Release 1.0.XX.0. See GitHub for details.",
-  "targetAbi": "10.11.0.0",
-  "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.XX/jellyfin-plugin-upcoming-movies_v1.0.XX.zip",
-  "checksum": "<MD5 from the GitHub release body>",
-  "timestamp": "<timestamp from the GitHub release>"
-}
-```
-
-Get the ZIP MD5 from the GitHub release description (it's printed as `**ZIP MD5:** `...``).  
-Prepend this object at position `[0].versions[0]` (the very first entry in the array), then:
-
-```powershell
-git add manifest.json
-git commit -m "chore: manually update manifest for v1.0.XX"
-git push origin main
-```
-
----
-
 ## Version Numbering
 
 | Convention | Example |
@@ -1011,3 +915,88 @@ A film in a recently-watched genre can shift ~1–4 positions relative to a film
 |------|--------|
 | `Services/UserProfileService.cs` | Added `GetRecentInterestWeights()` — exp(-k×days) decay over RecentWatches |
 | `Api/TmdbController.cs` | Calls `ProfileService.GetRecentInterestWeights(profile)` before scoring; adds recency bonus to genre (×8) and language (×5) scoring |
+
+---
+
+## Phase 37 — Manifest Fix + CI Workflow Fix (2026-03-15) ✅
+
+**Root cause of versions not appearing in Jellyfin plugin catalog:**  
+The GitHub Actions `build-release.yml` manifest-update step was using `git pull --rebase` before pushing the updated `manifest.json`. When multiple tags are pushed in quick succession, by the time CI checks out `main` and tries to push, `main` has already moved ahead (from the previous build's manifest commit). This caused a non-fast-forward rejection and the `manifest.json` never got updated.
+
+**What was fixed:**
+- Changed `git pull origin main --rebase` → `git fetch origin main && git reset --hard origin/main` — always starts from the exact remote HEAD, no rebase conflicts
+- Changed `git push origin main` → `git push --force-with-lease origin main` — can push even if local fell behind, but rejects if someone else pushed concurrently (safe)
+
+**Versions manually backfilled in manifest.json:** v1.0.48, v1.0.49, v1.0.50, v1.0.51, v1.0.52 (checksums taken from GitHub release body MD5 fields via API).
+
+---
+
+## ⚠️ Release Process — REQUIRED READING FOR ALL FUTURE AGENTS ⚠️
+
+### How a Jellyfin Plugin Release Works
+
+1. **Commit code changes** to the local `main` branch
+2. **Tag the release** — the tag name determines the version: `git tag v1.0.XX`
+3. **Push both** — `git push origin main && git push origin v1.0.XX`
+
+When the tag is pushed, GitHub Actions (`build-release.yml`) automatically:
+- Builds the `.dll` in Release mode
+- Packages it as `jellyfin-plugin-upcoming-movies_v1.0.XX.zip`
+- Computes MD5 checksum
+- **Prepends a new entry to `manifest.json`** on the `main` branch
+- Creates a GitHub Release with the ZIP as an asset
+
+Jellyfin reads **`manifest.json` on the `main` branch** to list available versions in the plugin catalog. If `manifest.json` is not updated, the version **will not appear** even if the release ZIP exists.
+
+### When manifest.json Falls Out of Sync (Recovery Procedure)
+
+If Jellyfin does not show a new version, check:
+1. Did the CI run succeed? Look at the Actions tab on GitHub
+2. Does `manifest.json` on `main` have the new version? Check `https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json`
+3. Does the GitHub Release exist with the ZIP asset?
+
+**If the manifest is missing versions:**
+- Get the MD5 checksum from the release body text on GitHub (it says `**ZIP MD5:** \`...\``)
+- OR call `https://api.github.com/repos/Hu1k1e/Discover---Jellyfin/releases` to get release metadata
+- Manually prepend missing versions to `manifest.json` (newest first), commit, and push `main`
+
+### What NOT to do
+- ❌ Do NOT retag and re-push without fixing the manifest — the CI workflow will create a duplicate release
+- ❌ Do NOT push tags without committing code first — the CI builds from tagged HEAD
+- ❌ Do NOT edit manifest.json without the correct MD5 checksum from the actual built ZIP
+
+### Version Numbering Convention
+Current version: **1.0.53**. Next release: **1.0.54**. Always increment the third part by 1.
+
+---
+
+## Phase 38 — Discover Page Routing Regression Fix (2026-03-15) ✅
+
+**Release: v1.0.53**
+
+### Bug: `?custom=discover` Sidebar Link Stopped Working (Broken After v1.0.50)
+
+**Root cause:** In Phase 35 (infinite scroll fix), the following block was removed from `discoverPage.js`:
+```js
+} else if (btnMore) {
+    btnMore.style.display = 'none';
+}
+```
+This removal left **two closing braces** collapsed into **one orphan brace**:
+- The missing `}` that should close `if (btnMore)` 
+- The missing `}` that should close `else if (rec)` (the recommendations success branch)
+
+**Result:** The `else { rowRec.innerHTML = 'Failed to load' }` block incorrectly paired with `if (btnMore)` instead of `if (rowRec)`. This ran on every successful load, wiping the entire recommendations container with an error placeholder immediately after rendering — making the discover page appear blank/broken.
+
+**Fix:** Added back the two properly-labelled closing braces with comments:
+```js
+                }   // end if (btnMore)
+            }   // end else if (rec)
+            else { rowRec.innerHTML = '<div class="discover-error">...</div>'; }
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Restored missing closing brace for `else if (rec)` success branch — fixes blank discover page |
