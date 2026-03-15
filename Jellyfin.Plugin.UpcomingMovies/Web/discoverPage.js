@@ -740,17 +740,17 @@
 
         // Async fetch ratings to fill in IMDB and RT badges
         if (opts.tmdbId) {
-            fetch('/UpcomingMovies/tmdb/ratings?tmdbId=' + opts.tmdbId, {
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
-            }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+            var cacheKey = String(opts.tmdbId);
+            if (!window._ratingsCache) window._ratingsCache = {};
+            var cachedRatings = window._ratingsCache[cacheKey];
+
+            function applyRatings(data) {
                 if (!data) return;
-                // Update RT badge
                 var rtEl = document.getElementById('htv-rt-' + opts.tmdbId);
                 if (rtEl) {
                     var rtSpan = rtEl.querySelector('span');
                     if (rtSpan) rtSpan.textContent = data.rtScore || '—';
                 }
-                // Update IMDB badge — also make it clickable if we have imdbId
                 var imdbEl = document.getElementById('htv-imdb-' + opts.tmdbId);
                 if (imdbEl) {
                     var imdbSpan = imdbEl.querySelector('span');
@@ -762,10 +762,21 @@
                         });
                     }
                 }
-                // Update Jellyfin badge with more precise score if available
                 var jfEl = document.querySelector('#htv-ratings-' + opts.tmdbId + ' .jellyfin span');
                 if (jfEl && data.tmdbRating) jfEl.textContent = data.tmdbRating.toFixed(1);
-            }).catch(function() { /* ratings optional, ignore errors */ });
+            }
+
+            if (cachedRatings !== undefined) {
+                // Use cached result immediately (no extra API call)
+                applyRatings(cachedRatings);
+            } else {
+                fetch('/UpcomingMovies/tmdb/ratings?tmdbId=' + opts.tmdbId, {
+                    headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+                    window._ratingsCache[cacheKey] = data; // cache whether data or null
+                    applyRatings(data);
+                }).catch(function() { window._ratingsCache[cacheKey] = null; });
+            }
         }
 
 
@@ -1123,6 +1134,9 @@
         var _tmdbRecBuffer = [];
         var _tmdbRecPage = 1;
         var _tmdbRecTotalPages = 1;
+        // Tracks every TMDB ID already rendered in recommendations — prevents cross-page dupes
+        // when backend scoring overlaps between successive page fetches
+        var _renderedRecIds = new Set();
 
         async function ensureRecommendationsBuffer(targetCount) {
             while (_tmdbRecBuffer.length < targetCount && _tmdbRecPage <= _tmdbRecTotalPages) {
@@ -1164,6 +1178,14 @@
                 var fullRowCount = Math.floor(availableCount / cols) * cols;
                 var sliceCount = fullRowCount > 0 ? Math.min(fullRowCount, targetCount) : Math.min(targetCount, availableCount);
                 var chunk = _tmdbRecBuffer.splice(0, sliceCount);
+                // Filter out any IDs already shown (shouldn't happen on first load, but be safe)
+                chunk = chunk.filter(function(m) {
+                    if (!m || !m.id) return false;
+                    var id = String(m.id);
+                    if (_renderedRecIds.has(id)) return false;
+                    _renderedRecIds.add(id);
+                    return true;
+                });
                 renderTmdbCards(chunk, rowRec, streamBaseUrl, false, false);
 
                 if (btnMore && (_tmdbRecBuffer.length > 0 || _tmdbRecPage <= _tmdbRecTotalPages)) {
@@ -1183,6 +1205,14 @@
                             var dynFullRows = Math.floor(dynAvail / dynCols) * dynCols;
                             var sc = dynFullRows > 0 ? Math.min(dynFullRows, dynTargetCount) : Math.min(dynTargetCount, dynAvail);
                             var nextChunk = _tmdbRecBuffer.splice(0, sc);
+                            // Deduplicate against everything already rendered in this session
+                            nextChunk = nextChunk.filter(function(m) {
+                                if (!m || !m.id) return false;
+                                var id = String(m.id);
+                                if (_renderedRecIds.has(id)) return false;
+                                _renderedRecIds.add(id);
+                                return true;
+                            });
                             if (nextChunk.length > 0) {
                                 renderTmdbCards(nextChunk, rowRec, streamBaseUrl, false, true);
                             }
