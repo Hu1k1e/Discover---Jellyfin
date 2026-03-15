@@ -1140,4 +1140,29 @@ Re-applied the two closing braces with comments:
 |------|--------|
 | `Api/TmdbController.cs` | Added filter params to GetUpcoming/GetRecommendations; profile endpoints AllowAnonymous |
 | `Services/UserProfileService.cs` | Added `GetAllProfileUserIds()` method |
-| `Web/discoverPage.js` | Filter CSS, state vars, buildSectionHtml, fetchUpcoming/fetchRecommendations, full filter wiring |
+| `Web/discoverPage.js` | Filter CSS, state vars, buildSectionHtml, fetchUpcoming/fetchRecommendations, full filter wiring |
+
+---
+
+## Phase 43 — Filter Panel Bug Fixes (v1.0.59)
+
+### Bugs Fixed
+
+1. **Reset breaks dropdown** — Root cause: Reset was replacing the panel DOM with a new element, which caused `addEventListener` to be called a second time on the toggle button (which was outside the panel), creating a duplicate listener that cancelled itself out. **Fix:** Reset now updates pill `.active` classes, checkbox states, and date input values programmatically on the existing DOM — no DOM replacement.
+
+2. **Apply doesn't auto-close** — After a successful Apply, the panel now gains removes `.show` and the toggle button text reverts to `Filters ▾`.
+
+3. **Bracket text removed** — `(all selected by default)` and `(none = any)` labels removed from filter panel section headers.
+
+4. **Rec cards appear huge after filter** — Root cause: `.discover-grid` used `repeat(auto-fit, minmax(150px, 1fr))` which stretches cards to fill available space when there are only a few items. **Fix:** Changed to `repeat(auto-fill, 150px)` — fixed column width, cards never stretch.
+
+5. **Apply only shows a few items** — Root cause: Apply was rendering only whatever `fetchRecommendations(page=1)` returned (≤20 items), same as the initial load did NOT do. **Fix:** Apply now seeds the buffer with page-1 results, calls `ensureRecommendationsBuffer(cols × 3)` exactly like the initial load, then renders a full 3 rows.
+
+6. **Filter buttons not at same height** — Both section header divs now use `SECTION_HEADER_STYLE` with `min-height:48px` and `h2` has `margin:0` so both filter buttons align at the same vertical position.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Grid CSS, label text, header alignment, Reset wiring, Apply wiring (all 5 fixes) |
+

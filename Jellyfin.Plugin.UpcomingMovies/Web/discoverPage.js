@@ -84,7 +84,7 @@
             .discover-row::-webkit-scrollbar { display: none; }
             .discover-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                grid-template-columns: repeat(auto-fill, 150px);
                 gap: 24px;
                 padding-top: 4px; padding-bottom: 24px;
             }
@@ -538,9 +538,9 @@
         }
 
         return '<div class="df-panel" data-panel="' + sectionId + '">'
-            + '<div class="df-section-label">Languages' + (isUpcoming ? ' <span style="color:#555;font-weight:400">(all selected by default)</span>' : ' <span style="color:#555;font-weight:400">(none = any)</span>') + '</div>'
+            + '<div class="df-section-label">Languages</div>'
             + '<div class="df-pills" data-group="lang">' + langPills + '</div>'
-            + '<div class="df-section-label">Genres <span style="color:#555;font-weight:400">(none selected = all genres)</span></div>'
+            + '<div class="df-section-label">Genres</div>'
             + '<div class="df-pills" data-group="genre">' + genrePills + '</div>'
             + rtHtml + dateHtml
             + '<div class="df-footer">'
@@ -550,12 +550,17 @@
             + '</div>';
     }
 
+    // Shared header wrapper style: consistent height so both filter buttons align vertically
+    var SECTION_HEADER_STYLE = 'display:flex;align-items:center;justify-content:space-between;min-height:48px;';
+
     function buildSectionHtml(id, title, isGrid) {
         var filterBtn = '<button class="df-toggle-btn" data-toggle-filter="' + id + '">Filters &#9660;</button>';
         if (isGrid) {
             return '<div class="discover-section" data-section="' + id + '">'
-                + '<div style="display:flex;align-items:center;justify-content:space-between;">'
-                + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
+                + '<div style="' + SECTION_HEADER_STYLE + '">'
+                + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left" style="margin:0;">'
+                +   title
+                + '</h2>'
                 + filterBtn
                 + '</div>'
                 + buildFilterPanelHtml(id)
@@ -565,11 +570,13 @@
                 + '<div style="text-align:center; padding: 10px;"><button class="btn-discover-more dcm-btn" data-more="' + id + '" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color:#fff; display:none; padding:12px 24px; border-radius:8px; font-weight:600; cursor:pointer; transition:background 0.2s, transform 0.2s;" onmouseover="this.style.background=\'#00C853\'" onmouseout="this.style.background=\'rgba(255,255,255,0.08)\'">Discover More</button></div>'
                 + '</div>';
         }
-        var refreshBtn = '<button is="emby-button" class="emby-button paper-icon-button-light" style="margin-right:4%; color:#aaa; font-size:1.1em; padding:8px;" title="Refresh Upcoming" data-action="refresh-upcoming"><i class="material-icons">refresh</i></button>';
+        var refreshBtn = '<button is="emby-button" class="emby-button paper-icon-button-light" style="color:#aaa; font-size:1.1em; padding:8px; margin-right:4%;" title="Refresh Upcoming" data-action="refresh-upcoming"><i class="material-icons">refresh</i></button>';
         return '<div class="discover-section" data-section="' + id + '">'
-            + '<div style="display:flex; align-items:center; justify-content:space-between;">'
-            + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left">' + title + '</h2>'
-            + '<div style="display:flex;gap:8px;align-items:center;">' + filterBtn + refreshBtn + '</div>'
+            + '<div style="' + SECTION_HEADER_STYLE + '">'
+            + '<h2 class="discover-section-title sectionTitle sectionTitle-cards padded-left" style="margin:0;">'
+            +   title
+            + '</h2>'
+            + '<div style="display:flex;gap:8px;align-items:center;margin-right:4%;">' + filterBtn + refreshBtn + '</div>'
             + '</div>'
             + buildFilterPanelHtml(id)
             + '<div class="discover-row-wrap">'
@@ -1491,7 +1498,8 @@
                 btn.innerHTML = 'Filters ' + (isOpen ? '&#9650;' : '&#9660;');
             });
         });
-        // Reset buttons
+        // Reset buttons — update pill/checkbox state WITHOUT replacing the DOM
+        // (replacing DOM causes a duplicate listener bug on the toggle button)
         containerDiv.querySelectorAll('[data-reset]').forEach(function(resetBtn) {
             resetBtn.addEventListener('click', function() {
                 var sid = resetBtn.dataset.reset;
@@ -1505,47 +1513,24 @@
                     _recFilters.languages = [];
                     _recFilters.genres    = [];
                 }
-                // Rebuild + re-wire panel
+                var f = sid === 'upcoming' ? _upcFilters : _recFilters;
+                // Update pill active states
                 var panel = containerDiv.querySelector('[data-panel="' + sid + '"]');
                 if (panel) {
-                    var tmp = document.createElement('div');
-                    tmp.innerHTML = buildFilterPanelHtml(sid);
-                    panel.parentElement.replaceChild(tmp.firstChild, panel);
-                    // Re-wire the new panel's pills/checkboxes (toggle/apply keep working via event delegation is not used
-                    // so we re-query and re-attach on the new elements only)
-                    containerDiv.querySelectorAll('[data-panel="' + sid + '"] .df-pill').forEach(function(p2) {
-                        p2.addEventListener('click', function() {
-                            var ft = p2.dataset.filter, v = p2.dataset.val;
-                            var f = sid === 'upcoming' ? _upcFilters : _recFilters;
-                            if (ft === 'lang') {
-                                var ix = f.languages.indexOf(v);
-                                if (ix !== -1) { f.languages.splice(ix,1); p2.classList.remove('active'); }
-                                else           { f.languages.push(v);      p2.classList.add('active'); }
-                            } else if (ft === 'genre') {
-                                var gid2 = parseInt(v,10), gi2 = f.genres.indexOf(gid2);
-                                if (gi2 !== -1) { f.genres.splice(gi2,1); p2.classList.remove('active'); }
-                                else            { f.genres.push(gid2);    p2.classList.add('active'); }
-                            }
-                        });
+                    panel.querySelectorAll('.df-pill[data-filter="lang"]').forEach(function(p) {
+                        var isActive = f.languages.indexOf(p.dataset.val) !== -1;
+                        p.classList.toggle('active', isActive);
                     });
-                    containerDiv.querySelectorAll('[data-panel="' + sid + '"] input[data-filter="rt"]').forEach(function(cb2) {
-                        cb2.addEventListener('change', function() {
-                            var v2 = parseInt(cb2.dataset.val,10), ix2 = _upcFilters.releaseTypes.indexOf(v2);
-                            if (cb2.checked) { if (ix2===-1) _upcFilters.releaseTypes.push(v2); }
-                            else             { if (ix2!==-1) _upcFilters.releaseTypes.splice(ix2,1); }
-                        });
+                    panel.querySelectorAll('.df-pill[data-filter="genre"]').forEach(function(p) {
+                        p.classList.remove('active'); // genres default = none
                     });
-                    // Re-attach toggle, reset, apply in the new panel
-                    var newToggle = containerDiv.querySelector('[data-toggle-filter="' + sid + '"]');
-                    if (newToggle) {
-                        newToggle.addEventListener('click', function() {
-                            var pp = containerDiv.querySelector('[data-panel="'+sid+'"]');
-                            if (!pp) return;
-                            var io = pp.classList.toggle('show');
-                            newToggle.classList.toggle('active', io);
-                            newToggle.innerHTML = 'Filters '+(io?'&#9650;':'&#9660;');
-                        });
-                    }
+                    // Restore checkboxes (upcoming only)
+                    panel.querySelectorAll('input[data-filter="rt"]').forEach(function(cb) {
+                        cb.checked = _upcFilters.releaseTypes.indexOf(parseInt(cb.dataset.val, 10)) !== -1;
+                    });
+                    // Restore date inputs
+                    panel.querySelectorAll('input[data-filter="dateFrom"]').forEach(function(el) { el.value = _upcFilters.dateFrom; });
+                    panel.querySelectorAll('input[data-filter="dateTo"]').forEach(function(el) { el.value = _upcFilters.dateTo; });
                 }
             });
         });
@@ -1564,25 +1549,37 @@
                         else               rowUpcoming.innerHTML = '<div class="discover-error">Failed to load.</div>';
                     } else if (sid === 'recommended' && rowRec) {
                         rowRec.innerHTML = '<div class="discover-loading">Filtering&hellip;</div>';
-                        _tmdbRecBuffer = []; _tmdbRecPage = 2; _renderedRecIds.clear();
+                        // Full reset of recommendation state
+                        _tmdbRecBuffer = []; _tmdbRecPage = 2; _renderedRecIds.clear(); _tmdbRecTotalPages = 50;
                         var rNew = await fetchRecommendations(1, _recFilters);
                         if (isSetup(rNew)) { rowRec.innerHTML = SETUP_HTML; }
                         else if (rNew && rNew.results) {
-                            var rChunk = rNew.results.filter(function(m) {
+                            // Seed buffer with page-1 results, then fill to 3 rows using ensureRecommendationsBuffer
+                            Array.prototype.push.apply(_tmdbRecBuffer, rNew.results);
+                            var cw2 = rowRec.clientWidth || 1000;
+                            var c2  = Math.max(1, Math.floor((cw2 + 24) / (150 + 24)));
+                            var rTarget = c2 * 3;
+                            await ensureRecommendationsBuffer(rTarget);
+                            // Enrich with library info and dedup
+                            var rChunk = _tmdbRecBuffer.splice(0, rTarget).filter(function(m) {
                                 if (!m || !m.id) return false;
                                 if (_renderedRecIds.has(String(m.id))) return false;
                                 _renderedRecIds.add(String(m.id));
                                 var li = tmdbMap[m.id];
+                                if (li && li.played) return false;
                                 if (li) { m.isAvailable=true; m.jellyfinId=li.id; m.isWatchlisted=li.isWatchlisted; }
                                 return true;
                             });
                             renderTmdbCards(rChunk, rowRec, streamBaseUrl, false, false);
-                            // Refill buffer from remaining results
-                            Array.prototype.push.apply(_tmdbRecBuffer, rNew.results);
                         } else {
                             rowRec.innerHTML = '<div class="discover-error">Failed to load.</div>';
                         }
                     }
+                    // Auto-close the filter panel after successful apply
+                    var panel = containerDiv.querySelector('[data-panel="' + sid + '"]');
+                    var toggleBtn = containerDiv.querySelector('[data-toggle-filter="' + sid + '"]');
+                    if (panel)     { panel.classList.remove('show'); }
+                    if (toggleBtn) { toggleBtn.classList.remove('active'); toggleBtn.innerHTML = 'Filters &#9660;'; }
                 } catch(err) { ERR('Apply filter error:', err); }
                 finally { applyBtn.textContent = 'Apply Filters'; applyBtn.disabled = false; }
             });
