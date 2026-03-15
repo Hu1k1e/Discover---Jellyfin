@@ -456,103 +456,103 @@
         return res.json();
     }
 
-    // Build rich per-user signal profile from Jellyfin \u2192 send to backend for personalized recommendations
+    // -- sessionStorage profile cache for director/actor signals --
+    var _PROFILE_KEY = 'htv_uprofile';
+    function _pGet() { try { var r=sessionStorage.getItem(_PROFILE_KEY); return r?JSON.parse(r):{}; } catch(e){return{};} }
+    function _pSave(p) { try { sessionStorage.setItem(_PROFILE_KEY, JSON.stringify(p)); } catch(e){} }
+
+    // Background People enrichment -- runs AFTER render, director/actor data used on next page load
+    function _enrichPeopleAsync(userId, server, token) {
+        setTimeout(async function(){
+            try {
+                var dW={}, aW={};
+                var r = await fetch(
+                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=30&Recursive=true&Fields=ProviderIds,People',
+                    { headers: { 'X-Emby-Token': token } }
+                );
+                if (!r.ok) return;
+                ((await r.json()).Items||[]).forEach(function(item,idx){
+                    var w=idx<10?3:1;
+                    (item.People||[]).forEach(function(p){
+                        var pid=p.ProviderIds&&p.ProviderIds.Tmdb?parseInt(p.ProviderIds.Tmdb,10):null;
+                        if(!pid) return;
+                        if(p.Type==='Director') dW[pid]=(dW[pid]||0)+w*2;
+                        else if(p.Type==='Actor') aW[pid]=(aW[pid]||0)+w;
+                    });
+                });
+                var prof = _pGet();
+                prof.dW = dW; prof.aW = aW; prof.at = Date.now();
+                _pSave(prof);
+            } catch(e){ console.warn('[HTV] People enrich failed',e); }
+        }, 200);
+    }
+
+    // Fast path -- no People field (eliminates the 10s+ block)
     async function fetchRecommendations(page) {
         page = page || 1;
         var client = window.ApiClient;
         var userId = client && client.getCurrentUserId();
-        var tmdbSeeds    = []; // { id, weight }
-        var genreWeights = {};
-        var directorWeights = {};
-        var actorWeights    = {};
+        var seeds=[], gW={};
+        var prof = _pGet();
 
         if (userId) {
             try {
                 var server = client._serverAddress;
                 var token  = client.accessToken();
-
-                // a) Watch history \u2014 last 100 movies with People for director/actor signals
-                var watchedRes = await fetch(
-                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=100&Recursive=true&Fields=ProviderIds,GenreItems,People',
+                var wr = await fetch(
+                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=50&Recursive=true&Fields=ProviderIds,GenreItems',
                     { headers: { 'X-Emby-Token': token } }
                 );
-                if (watchedRes.ok) {
-                    var watchedItems = (await watchedRes.json()).Items || [];
-                    watchedItems.forEach(function(item, idx) {
-                        var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
-                        var w = idx < 20 ? 3 : 1; // recent = stronger signal
-                        if (tid && tid > 0) tmdbSeeds.push({ id: tid, weight: w });
-                        (item.GenreItems || []).forEach(function(g) {
-                            var gid = GENRE_MAP[g.Name];
-                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + w;
-                        });
-                        (item.People || []).forEach(function(person) {
-                            var pid = person.ProviderIds && person.ProviderIds.Tmdb ? parseInt(person.ProviderIds.Tmdb, 10) : null;
-                            if (!pid) return;
-                            if (person.Type === 'Director') directorWeights[pid] = (directorWeights[pid] || 0) + w * 2;
-                            else if (person.Type === 'Actor') actorWeights[pid] = (actorWeights[pid] || 0) + w;
+                if (wr.ok) {
+                    ((await wr.json()).Items||[]).forEach(function(item,idx){
+                        var tid=item.ProviderIds&&item.ProviderIds.Tmdb?parseInt(item.ProviderIds.Tmdb,10):null;
+                        var w=idx<20?3:1;
+                        if(tid&&tid>0) seeds.push({id:tid,weight:w});
+                        (item.GenreItems||[]).forEach(function(g){
+                            var gid=GENRE_MAP[g.Name];
+                            if(gid) gW[gid]=(gW[gid]||0)+w;
                         });
                     });
                 }
-
-                // b) Favorites \u2014 5\u00d7 weight (strongest preference signal)
-                var favRes = await fetch(
-                    server + '/Users/' + userId + '/Items?IncludeItemTypes=Movie&IsFavorite=true&Recursive=true&Limit=50&Fields=ProviderIds,GenreItems,People',
+                var fr = await fetch(
+                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&IsFavorite=true&Recursive=true&Limit=30&Fields=ProviderIds,GenreItems',
                     { headers: { 'X-Emby-Token': token } }
                 );
-                if (favRes.ok) {
-                    (await favRes.json()).Items.forEach(function(item) {
-                        var tid = item.ProviderIds && item.ProviderIds.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : null;
-                        var w = 5;
-                        if (tid && tid > 0) {
-                            var ex = tmdbSeeds.find(function(s) { return s.id === tid; });
-                            if (ex) ex.weight += w; else tmdbSeeds.push({ id: tid, weight: w });
+                if (fr.ok) {
+                    ((await fr.json()).Items||[]).forEach(function(item){
+                        var tid=item.ProviderIds&&item.ProviderIds.Tmdb?parseInt(item.ProviderIds.Tmdb,10):null;
+                        if(tid&&tid>0){
+                            var ex=seeds.find(function(s){return s.id===tid;});
+                            if(ex) ex.weight+=5; else seeds.push({id:tid,weight:5});
                         }
-                        (item.GenreItems || []).forEach(function(g) {
-                            var gid = GENRE_MAP[g.Name];
-                            if (gid) genreWeights[gid] = (genreWeights[gid] || 0) + w;
-                        });
-                        (item.People || []).forEach(function(person) {
-                            var pid = person.ProviderIds && person.ProviderIds.Tmdb ? parseInt(person.ProviderIds.Tmdb, 10) : null;
-                            if (!pid) return;
-                            if (person.Type === 'Director') directorWeights[pid] = (directorWeights[pid] || 0) + w * 2;
-                            else if (person.Type === 'Actor') actorWeights[pid] = (actorWeights[pid] || 0) + w;
+                        (item.GenreItems||[]).forEach(function(g){
+                            var gid=GENRE_MAP[g.Name];
+                            if(gid) gW[gid]=(gW[gid]||0)+5;
                         });
                     });
                 }
-            } catch (err) {
-                WARN('Failed to gather user signals:', err);
-            }
+                _enrichPeopleAsync(userId, server, token);
+            } catch(err){ console.warn('[HTV] User signals failed:',err); }
         }
 
-        // Sort seeds by weight, extract top signals
-        tmdbSeeds.sort(function(a, b) { return b.weight - a.weight; });
+        seeds.sort(function(a,b){return b.weight-a.weight;});
+        var topGenres=Object.keys(gW).sort(function(a,b){return gW[b]-gW[a];}).slice(0,5).join('|');
+        var seedIds=seeds.slice(0,8).map(function(s){return s.id;}).join(',');
+        var dW=prof.dW||{}; var aW=prof.aW||{};
+        var topDirs=Object.keys(dW).sort(function(a,b){return dW[b]-dW[a];}).slice(0,3).join(',');
+        var topActors=Object.keys(aW).sort(function(a,b){return aW[b]-aW[a];}).slice(0,3).join(',');
 
-        var topGenres = Object.keys(genreWeights)
-            .sort(function(a, b) { return genreWeights[b] - genreWeights[a]; })
-            .slice(0, 5).join('|');
+        var params=['page='+page];
+        if(seedIds)   params.push('tmdbIds='+encodeURIComponent(seedIds));
+        if(topGenres) params.push('genreIds='+encodeURIComponent(topGenres));
+        if(topDirs)   params.push('directorIds='+encodeURIComponent(topDirs));
+        if(topActors) params.push('actorIds='+encodeURIComponent(topActors));
 
-        var seedIds = tmdbSeeds.slice(0, 8).map(function(s) { return s.id; }).join(',');
-
-        var topDirectors = Object.keys(directorWeights)
-            .sort(function(a, b) { return directorWeights[b] - directorWeights[a]; })
-            .slice(0, 3).join(',');
-
-        var topActors = Object.keys(actorWeights)
-            .sort(function(a, b) { return actorWeights[b] - actorWeights[a]; })
-            .slice(0, 3).join(',');
-
-        var params = ['page=' + page];
-        if (seedIds)      params.push('tmdbIds='     + encodeURIComponent(seedIds));
-        if (topGenres)    params.push('genreIds='    + encodeURIComponent(topGenres));
-        if (topDirectors) params.push('directorIds=' + encodeURIComponent(topDirectors));
-        if (topActors)    params.push('actorIds='    + encodeURIComponent(topActors));
-
-        var res = await fetch('/UpcomingMovies/tmdb/recommendations?' + params.join('&'), {
-            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+        var res=await fetch('/UpcomingMovies/tmdb/recommendations?'+params.join('&'),{
+            headers:{'X-Emby-Authorization':getJellyfinAuthHeader()}
         });
-        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
-        if (!res.ok) throw new Error('Recommendations error ' + res.status);
+        if(res.status===400||res.status===500) return NEEDS_SETUP;
+        if(!res.ok) throw new Error('Recommendations error '+res.status);
         return res.json();
     }
 
@@ -560,20 +560,20 @@
     // 7. JELLYSEERR MODAL
     // ─────────────────────────────────────────────
 
+    // Pre-cached Radarr instances — fetched once, reused for instant modal open
+    var _radarrCache = null;
+    async function _fetchRadarrCached() {
+        if (_radarrCache !== null) return _radarrCache;
+        try {
+            var rr = await fetch('/UpcomingMovies/jellyseerr/radarr', { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
+            if (rr.ok) _radarrCache = await rr.json();
+        } catch(e) { WARN('Radarr prefetch failed', e); }
+        return _radarrCache || [];
+    }
+
     async function openRequestModal(tmdbId, movieTitle, backdropUrl) {
         closeAnyOpenModal();
-        // Fetch Radarr instances for dropdowns
-        var radarrInstances = [];
-        try {
-            var radarrRes = await fetch('/UpcomingMovies/jellyseerr/radarr', {
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
-            });
-            if (radarrRes.ok) {
-                radarrInstances = await radarrRes.json();
-            }
-        } catch (err) {
-            WARN('Could not load Radarr instances:', err);
-        }
+        var radarrInstances = await _fetchRadarrCached();
 
         // Build modal DOM
         var backdrop = document.createElement('div');
@@ -691,6 +691,9 @@
                 if (res.ok) {
                     statusEl.textContent = '\u2713 Requested successfully!';
                     statusEl.className = 'dcm-status success';
+                    // Add to in-memory Set so future card builds also show Requested
+                    if (!window._jellyseerrRequests) window._jellyseerrRequests = new Set();
+                    window._jellyseerrRequests.add(String(tmdbId));
                     var btns = document.querySelectorAll('.btn-request[data-tmdb="' + tmdbId + '"]');
                     btns.forEach(function(btn) {
                         btn.innerHTML = '&#10003; Requested';
@@ -698,6 +701,7 @@
                         btn.disabled = true;
                     });
                     setTimeout(close, 1600);
+
                 } else {
                     var errData = await res.json().catch(function() { return {}; });
                     statusEl.textContent = 'Error: ' + (errData.error || ('HTTP ' + res.status));
@@ -978,6 +982,38 @@
     // 10. BOOT
     // ─────────────────────────────────────────────
 
+    // Load all Jellyseerr requests and cache them as a Set of string TMDB IDs
+    // Backend returns an integer array (HashSet<int> of TMDB IDs)
+    async function fetchAndCacheJellyseerrRequests() {
+        if (window._jellyseerrRequestsFetched) return;
+        window._jellyseerrRequestsFetched = true;
+        try {
+            var res = await fetch('/UpcomingMovies/jellyseerr/requests', {
+                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+            });
+            if (res.ok) {
+                var data = await res.json();
+                var s = new Set();
+                var items = Array.isArray(data) ? data : (data.results || []);
+                items.forEach(function(item) {
+                    var id = typeof item === 'number' ? item : (item.tmdbId || (item.media && item.media.tmdbId));
+                    if (id) s.add(String(id));
+                });
+                window._jellyseerrRequests = s;
+                LOG('Jellyseerr requests cached:', s.size, 'items');
+                // Refresh any already-rendered request buttons so they reflect correct state
+                document.querySelectorAll('.btn-request:not(.requested)').forEach(function(btn) {
+                    var tid = btn.dataset.tmdb;
+                    if (tid && s.has(String(tid))) {
+                        btn.className = 'jellyseerr-request-button btn-request requested';
+                        btn.disabled = true;
+                        btn.innerHTML = '&#10003; Requested';
+                    }
+                });
+            }
+        } catch(e) { WARN('Failed to cache Jellyseerr requests:', e); }
+    }
+
     var _renderingContainers = new Set();
 
     async function populateDiscoverContainer(containerDiv) {
@@ -1004,6 +1040,10 @@
         // Init navigation for each row
         if (rowUpcoming) initRowNavigation(rowUpcoming);
         if (rowRec)      initRowNavigation(rowRec);
+
+        // Pre-warm caches while data fetches run in parallel
+        setTimeout(function() { _fetchRadarrCached(); }, 50);
+        setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 100);
 
         function isSetup(v) { return v && v._needsSetup; }
 
