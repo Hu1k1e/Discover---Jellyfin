@@ -893,3 +893,39 @@ Watchlist seeds get +22 bonus (between +30 and +15) because watchlist intent is 
 | `Services/UserProfileService.cs` | Added `UpdateWithWatchlist()` (0.5× weight, no decay) and `GetWatchlistSeedIds()` (returns unwatched watchlist items) |
 | `Services/UserDataSavedConsumer.cs` | Rewrote `OnUserDataSaved` to handle both `Played=true` (full signal) and `Likes=true` (watchlist signal); both paths share the same TMDB credits fetch |
 | `Api/TmdbController.cs` | Added `wlSeedIds` extraction; added Source 8 (watchlist `/recommendations` at +22); updated `hasProfile` to also be `true` when user has watchlist items (unlocks personalised sources for new users who only watchlisted) |
+
+---
+
+## Phase 34 — Discover More Fix + Language-Affinity Scoring (2026-03-15) ✅
+
+**Release: v1.0.50**
+
+### Bug 1: Discover More Only Loading 2–3 Movies After Several Clicks
+
+**Root causes:**
+1. Backend sources 1, 2, 3 always fetched TMDB `page=1` regardless of the backend `page` param, so each call returned the same pool → deduplication wiped everything after page 2.
+2. Backend output returned all 60 scored movies per page; frontend `ensureRecommendationsBuffer` filled up fast but dedup removed most of them → tiny slices.
+3. `ensureRecommendationsBuffer` only checked `_tmdbRecBuffer.length >= targetCount` before dedup, so after dedup the chunk was tiny.
+
+**Fixes:**
+- Sources 1/2/3 now cycle TMDB pages based on the backend `page` param (page rotations: 1→2→3, 1→2→3→4→5, 1→2→...→8).
+- Backend now returns **20 movies per page** (paginated slice from scored pool) with `total_pages = 50` (virtual). Keeps pool small and varied.
+- `ensureRecommendationsBuffer` now fetches **3× targetCount raw** and deduplicates inside the buffer loop (not after), so the buffer always has enough unique items.
+
+### Feature: Language-Affinity Scoring and Discover Source
+
+**Language scoring (existing but underutilised):** Language weights were accumulated at `LanguageWeights[lang] += weight` and scored with `NW(weight) × 6.0`. This was correct but no dedicated source surfaced regional content.
+
+**Source 9 — Language-Affinity Discover (+18 bonus):**
+- Detects the user's top non-English language from `LanguageWeights` (e.g. `hi`, `ta`, `ko`).
+- Fetches `TMDB /discover/movie?with_original_language={topLang}` filtered by user's top genres.
+- Only activates if the user's top language weight ≥ 2.5 (at least 1 watchlist or 0.5× watch signals).
+- Movies from this source bypass the standard language allowlist filter (they've already been found by lang filter).
+- Cycles TMDB pages 1–10 so each backend call surfaces different regional films.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Sources 1/2/3 cycle TMDB pages per `page` param; `AddCandidate` gains `bypassLangFilter` param; Source 9 language-affinity discover (+18); backend output paginated to 20/page from scored pool |
+| `Web/discoverPage.js` | `ensureRecommendationsBuffer` fetches 3× targetCount; deduplication against `_renderedRecIds` moved into buffer fill loop (not after splice) |
