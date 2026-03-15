@@ -197,9 +197,19 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 
 ---
 
+## Phase 17 — Stream Modal, Logo Fix & Personalized Recommendations (2026-03-14) ✅
+
+| Bug/Feature | Implementation |
+|-------------|----------------|
+| "Discover" text on H-TV logo | Removed 7 lines from `mountNativeDiscoverView()` that overwrote `.pageTitleWithDefaultLogo` / `.pageTitleWithLogo` with the text "Discover". Logo now displays as normal. |
+| Stream popup modal | Converted all `<a class="btn-stream">` elements to `<button class="btn-stream" data-stream-url="...">`. Added `showStreamModal()` — glassmorphic overlay with poster, title, and a "Stream Now" link that opens in a new tab. Auto-dismisses when clicking outside or pressing ×. |
+| Modal auto-close | Added `closeAnyOpenModal()` helper that removes all `.htv-modal-overlay` and `.dcm-backdrop` overlays before opening any new one. Called at start of `openRequestModal()` and `showStreamModal()`. Clicking stream inside the overview modal closes the overview first, then opens the stream modal. |
+| Per-user Personalized Recommendations | Rewrote `fetchRecommendations()` in JS to build a full per-user signal profile from Jellyfin APIs: (a) Watch history — last 100 movies with `People` field; directors get 2× genre weight, actors get 1×; recency bonus (idx<20 = 3×, else 1×). (b) Favorites — 50 movies at 5× weight. Sends `tmdbIds` (8 seeds), `genreIds` (5), `directorIds` (3 top directors), `actorIds` (3 top actors) to backend. |
+| Backend Recommendation Engine | `TmdbController.GetRecommendations` adds `directorIds`/`actorIds` params. New data sources: `/movie/{id}/similar` for top 3 seeds; `/discover/movie?with_people={directors\|actors}` for people-based discovery. Seeds expanded 5→8. Results expanded Take(30)→Take(40). |
+
 # 10. Current Status
 
-**Latest Release: v1.0.23** — Phase 16 completed (UI polish: purple hover, larger close, full-row grid, alignment, no Discover header tab).
+**Latest Release: v1.0.24** — Phase 17 completed (stream modal, logo fix, fully per-user personalized recommendations).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
