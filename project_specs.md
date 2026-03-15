@@ -1062,4 +1062,37 @@ If Jellyfin does not show a new version, check:
 - ❌ Do NOT edit manifest.json without the correct MD5 checksum from the actual built ZIP
 
 ### Version Numbering Convention
-Current version: **1.0.52**. Next release: **1.0.53**. Always increment the third part by 1.
+Current version: **1.0.56**. Next release: **1.0.57**. Always increment the third part by 1.
+
+---
+
+## Phase 41 — Discover Page Routing Fix (Take 2) (2026-03-15) ✅
+
+**Release: v1.0.56**
+
+### Bug: Same Brace Regression as Phase 38 — Recurred Due to Git Chaos
+
+The brace fix from Phase 38 / v1.0.53 was lost during the force-push and merge storm between v1.0.53 and v1.0.55. The git history had:
+- A detached HEAD commit for docs
+- Multiple `--force-with-lease` pushes that overwrote each other
+- A stash pop that left `manifest.json` in a conflict state
+- A `git merge origin/main` that used the remote's version of `discoverPage.js` (which still had the broken brace)
+
+The result: the same `else { "Failed to load" }` incorrectly matched `if (btnMore)` instead of `if (rowRec)`, wiping recommendation cards on every successful load.
+
+### Fix
+
+Re-applied the two closing braces with comments:
+```js
+                }   // end if (btnMore)
+            }   // end else if (rec) — CRITICAL: closes success branch before the else
+            else { rowRec.innerHTML = '<div class="discover-error">...</div>'; }
+```
+
+> ⚠️ **Future agents:** This section of `discoverPage.js` around line 1354 is fragile. Never remove or move closing braces here without carefully tracing the `if (rowRec) → else if (rec) → if (btnMore)` nesting. Do NOT let git merges overwrite this file blindly.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Restored missing `}` for `else if (rec)` success branch (same fix as Phase 38)
