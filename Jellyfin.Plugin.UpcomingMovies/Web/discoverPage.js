@@ -456,103 +456,30 @@
         return res.json();
     }
 
-    // -- sessionStorage profile cache for director/actor signals --
-    var _PROFILE_KEY = 'htv_uprofile';
-    function _pGet() { try { var r=sessionStorage.getItem(_PROFILE_KEY); return r?JSON.parse(r):{}; } catch(e){return{};} }
-    function _pSave(p) { try { sessionStorage.setItem(_PROFILE_KEY, JSON.stringify(p)); } catch(e){} }
 
-    // Background People enrichment -- runs AFTER render, director/actor data used on next page load
-    function _enrichPeopleAsync(userId, server, token) {
-        setTimeout(async function(){
-            try {
-                var dW={}, aW={};
-                var r = await fetch(
-                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=30&Recursive=true&Fields=ProviderIds,People',
-                    { headers: { 'X-Emby-Token': token } }
-                );
-                if (!r.ok) return;
-                ((await r.json()).Items||[]).forEach(function(item,idx){
-                    var w=idx<10?3:1;
-                    (item.People||[]).forEach(function(p){
-                        var pid=p.ProviderIds&&p.ProviderIds.Tmdb?parseInt(p.ProviderIds.Tmdb,10):null;
-                        if(!pid) return;
-                        if(p.Type==='Director') dW[pid]=(dW[pid]||0)+w*2;
-                        else if(p.Type==='Actor') aW[pid]=(aW[pid]||0)+w;
-                    });
-                });
-                var prof = _pGet();
-                prof.dW = dW; prof.aW = aW; prof.at = Date.now();
-                _pSave(prof);
-            } catch(e){ console.warn('[HTV] People enrich failed',e); }
-        }, 200);
-    }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 6. RECOMMENDATIONS  (Phase 21 — server-side profile + scoring engine)
+    // ─────────────────────────────────────────────────────────────────────────────
+    //
+    // The user's taste profile (genre/director/actor/language weights, watch history)
+    // is maintained server-side and auto-updated by UserDataSavedConsumer whenever
+    // a movie is played. This function simply passes userId to the backend and
+    // receives a pre-scored, ranked list — no heavy client-side work needed.
+    // ─────────────────────────────────────────────────────────────────────────────
 
-    // Fast path -- no People field (eliminates the 10s+ block)
     async function fetchRecommendations(page) {
         page = page || 1;
         var client = window.ApiClient;
-        var userId = client && client.getCurrentUserId();
-        var seeds=[], gW={};
-        var prof = _pGet();
+        var userId = client && client.getCurrentUserId ? client.getCurrentUserId() : '';
 
-        if (userId) {
-            try {
-                var server = client._serverAddress;
-                var token  = client.accessToken();
-                var wr = await fetch(
-                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&Filters=IsPlayed&SortBy=DatePlayed&SortOrder=Descending&Limit=50&Recursive=true&Fields=ProviderIds,GenreItems',
-                    { headers: { 'X-Emby-Token': token } }
-                );
-                if (wr.ok) {
-                    ((await wr.json()).Items||[]).forEach(function(item,idx){
-                        var tid=item.ProviderIds&&item.ProviderIds.Tmdb?parseInt(item.ProviderIds.Tmdb,10):null;
-                        var w=idx<20?3:1;
-                        if(tid&&tid>0) seeds.push({id:tid,weight:w});
-                        (item.GenreItems||[]).forEach(function(g){
-                            var gid=GENRE_MAP[g.Name];
-                            if(gid) gW[gid]=(gW[gid]||0)+w;
-                        });
-                    });
-                }
-                var fr = await fetch(
-                    server+'/Users/'+userId+'/Items?IncludeItemTypes=Movie&IsFavorite=true&Recursive=true&Limit=30&Fields=ProviderIds,GenreItems',
-                    { headers: { 'X-Emby-Token': token } }
-                );
-                if (fr.ok) {
-                    ((await fr.json()).Items||[]).forEach(function(item){
-                        var tid=item.ProviderIds&&item.ProviderIds.Tmdb?parseInt(item.ProviderIds.Tmdb,10):null;
-                        if(tid&&tid>0){
-                            var ex=seeds.find(function(s){return s.id===tid;});
-                            if(ex) ex.weight+=5; else seeds.push({id:tid,weight:5});
-                        }
-                        (item.GenreItems||[]).forEach(function(g){
-                            var gid=GENRE_MAP[g.Name];
-                            if(gid) gW[gid]=(gW[gid]||0)+5;
-                        });
-                    });
-                }
-                _enrichPeopleAsync(userId, server, token);
-            } catch(err){ console.warn('[HTV] User signals failed:',err); }
-        }
+        var params = ['page=' + page];
+        if (userId) params.push('userId=' + encodeURIComponent(userId));
 
-        seeds.sort(function(a,b){return b.weight-a.weight;});
-        var topGenres=Object.keys(gW).sort(function(a,b){return gW[b]-gW[a];}).slice(0,5).join('|');
-        var seedIds=seeds.slice(0,8).map(function(s){return s.id;}).join(',');
-        var dW=prof.dW||{}; var aW=prof.aW||{};
-        var topDirs=Object.keys(dW).sort(function(a,b){return dW[b]-dW[a];}).slice(0,3).join(',');
-        var topActors=Object.keys(aW).sort(function(a,b){return aW[b]-aW[a];}).slice(0,3).join(',');
-
-        var params=['page='+page];
-        if(seedIds)   params.push('tmdbIds='+encodeURIComponent(seedIds));
-        if(topGenres) params.push('genreIds='+encodeURIComponent(topGenres));
-        if(topDirs)   params.push('directorIds='+encodeURIComponent(topDirs));
-        if(topActors) params.push('actorIds='+encodeURIComponent(topActors));
-
-        var res=await fetch('/UpcomingMovies/tmdb/recommendations?'+params.join('&'),{
-            headers:{'X-Emby-Authorization':getJellyfinAuthHeader()}
+        var res = await fetch('/UpcomingMovies/tmdb/recommendations?' + params.join('&'), {
+            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
         });
-        if(res.status===400||res.status===500) return NEEDS_SETUP;
-        if(!res.ok) throw new Error('Recommendations error '+res.status);
+        if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
+        if (!res.ok) throw new Error('Recommendations error ' + res.status);
         return res.json();
     }
 

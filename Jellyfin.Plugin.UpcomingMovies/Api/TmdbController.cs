@@ -4,6 +4,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.UpcomingMovies.Model;
+using Jellyfin.Plugin.UpcomingMovies.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -22,21 +24,23 @@ public class TmdbController : ControllerBase
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
     private readonly ILogger<TmdbController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly UserProfileService _profileService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TmdbController"/> class.
     /// </summary>
-    /// <param name="logger">Logger instance.</param>
-    /// <param name="httpClientFactory">HTTP client factory from DI.</param>
-    public TmdbController(ILogger<TmdbController> logger, IHttpClientFactory httpClientFactory)
+    public TmdbController(
+        ILogger<TmdbController> logger,
+        IHttpClientFactory httpClientFactory,
+        UserProfileService profileService)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _profileService = profileService;
     }
 
     /// <summary>
-    /// Proxies a request to TMDB's /movie/upcoming endpoint.
-    /// Returns only movies whose release_date is today or in the future.
+    /// Proxies a request to TMDB's /discover/movie endpoint filtered to upcoming releases.
     /// </summary>
     [HttpGet("upcoming")]
     [Authorize]
@@ -54,12 +58,12 @@ public class TmdbController : ControllerBase
             }
 
             var client = _httpClientFactory.CreateClient();
-            
-            // Phase 9: Request future movies up to 1 year in advance
-            var todayStr = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+            // Request future movies up to 1 year in advance
+            var todayStr   = DateTime.UtcNow.ToString("yyyy-MM-dd");
             var oneYearStr = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
             var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&page={page}&primary_release_date.gte={todayStr}&primary_release_date.lte={oneYearStr}&sort_by=popularity.desc&with_release_type=2|3&with_original_language=en&region=US";
-            
+
             var response = await client.GetAsync(url).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
@@ -69,7 +73,6 @@ public class TmdbController : ControllerBase
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
             return Content(json, "application/json");
         }
         catch (Exception ex)
@@ -80,19 +83,25 @@ public class TmdbController : ControllerBase
     }
 
     /// <summary>
-    /// Intelligent recommendation engine.
-    /// Accepts TMDB IDs of the user's watched/favorited movies and genre preference weights.
-    /// Fetches per-movie recommendations + genre-based discover results, then merges and deduplicates.
+    /// Phase 21 — Intelligent recommendation engine.
+    /// Loads the requesting user's server-side taste profile (built from watch history)
+    /// and uses it to produce a personalized, scored candidate pool from TMDB.
+    ///
+    /// Scoring factors (applied to every candidate):
+    ///   • Genre weights   — how much the user watches each genre (1.5× per genre match)
+    ///   • Director bonus  — movies from favourite directors have +50 source bonus
+    ///   • Actor bonus     — movies with favourite actors have +40 source bonus
+    ///   • Language weight — preferred language multiplier (2.0×)
+    ///   • Vote average    — quality signal (×5)
+    ///   • Popularity      — capped at 100 (×0.3)
+    ///   • Recency         — ≤2 years old +20, >10 years old −10
     /// </summary>
     [HttpGet("recommendations")]
     [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetRecommendations(
-        [FromQuery] string tmdbIds = "",
-        [FromQuery] string genreIds = "",
-        [FromQuery] string directorIds = "",
-        [FromQuery] string actorIds = "",
+        [FromQuery] string userId = "",
         [FromQuery] int page = 1)
     {
         try
@@ -100,186 +109,229 @@ public class TmdbController : ControllerBase
             var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                _logger.LogWarning("[UpcomingMovies] TMDB API key is not configured.");
-                return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
+                return StatusCode(400, new { _needsSetup = true, error = "TMDB API key not configured." });
             }
+
+            // ── Load user profile ──────────────────────────────────────────────────────────
+            var profile = string.IsNullOrWhiteSpace(userId)
+                ? new UserProfileData()
+                : _profileService.GetProfile(userId);
+
+            var watchedIds = new HashSet<int>(profile.WatchedTmdbIds);
+            var seedIds    = _profileService.GetRecentSeedIds(profile, 8);
+            var topGenres  = _profileService.GetTopGenres(profile, 5);
+            var topDirs    = _profileService.GetTopDirectors(profile, 5);
+            var topActors  = _profileService.GetTopActors(profile, 5);
+            bool hasProfile = profile.TotalWatched > 0;
 
             var client = _httpClientFactory.CreateClient();
-            var allResults = new List<JsonElement>();
-            var seenIds = new HashSet<int>();
 
-            // Seed IDs to exclude from recommendations (already watched/favorited by user)
-            var excludeIds = new HashSet<int>();
-            if (!string.IsNullOrWhiteSpace(tmdbIds))
+            // Thread-safe accumulation of candidates
+            var lock_ = new object();
+            var candidateSourceBonus = new Dictionary<int, double>();
+            var candidateElements    = new Dictionary<int, JsonElement>();
+
+            void AddCandidate(JsonElement movie, double sourceBonus)
             {
-                foreach (var part in tmdbIds.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                if (!movie.TryGetProperty("id", out var idProp) || !idProp.TryGetInt32(out var movieId)) return;
+                if (watchedIds.Contains(movieId)) return;
+                lock (lock_)
                 {
-                    if (int.TryParse(part.Trim(), out var id)) excludeIds.Add(id);
+                    if (!candidateElements.ContainsKey(movieId))
+                        candidateElements[movieId] = movie;
+                    if (!candidateSourceBonus.TryGetValue(movieId, out var existing) || sourceBonus > existing)
+                        candidateSourceBonus[movieId] = sourceBonus;
                 }
             }
 
-            // 1. Per-movie recommendations from watched/favorited titles (top 8 seeds)
-            var seedIds = excludeIds.Take(8).ToList();
-            foreach (var seedId in seedIds)
-            {
-                try
-                {
-                    var recUrl = $"{TmdbBaseUrl}/movie/{seedId}/recommendations?api_key={apiKey}&language=en-US&page=1";
-                    var recRes = await client.GetAsync(recUrl).ConfigureAwait(false);
-                    if (recRes.IsSuccessStatusCode)
-                    {
-                        var recJson = await recRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        var recDoc = JsonDocument.Parse(recJson);
-                        if (recDoc.RootElement.TryGetProperty("results", out var recResults))
-                        {
-                            foreach (var movie in recResults.EnumerateArray())
-                            {
-                                if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
-                                {
-                                    if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
-                                        allResults.Add(movie);
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception seedEx)
-                {
-                    _logger.LogWarning(seedEx, "[UpcomingMovies] Per-movie recommendations failed for TMDB ID {Id}", seedId);
-                }
-            }
-
-            // 2. Similar movies for top 3 high-signal seeds (complements /recommendations)
-            foreach (var seedId in seedIds.Take(3))
+            // ── Source 1: /recommendations from recent seed movies (+30) ──────────────────
+            var seedTasks = seedIds.Select(async seedId =>
             {
                 try
                 {
-                    var simUrl = $"{TmdbBaseUrl}/movie/{seedId}/similar?api_key={apiKey}&language=en-US&page=1";
-                    var simRes = await client.GetAsync(simUrl).ConfigureAwait(false);
-                    if (simRes.IsSuccessStatusCode)
-                    {
-                        var simJson = await simRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        var simDoc = JsonDocument.Parse(simJson);
-                        if (simDoc.RootElement.TryGetProperty("results", out var simResults))
-                        {
-                            foreach (var movie in simResults.EnumerateArray())
-                            {
-                                if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
-                                {
-                                    if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
-                                        allResults.Add(movie);
-                                }
-                            }
-                        }
-                    }
+                    var url = $"{TmdbBaseUrl}/movie/{seedId}/recommendations?api_key={apiKey}&language=en-US&page=1";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 30.0);
                 }
-                catch (Exception simEx)
-                {
-                    _logger.LogWarning(simEx, "[UpcomingMovies] Per-movie similar failed for TMDB ID {Id}", seedId);
-                }
-            }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] recommendations/{Id} failed", seedId); }
+            });
 
-            // 3. Genre-based discover as supplementary source
-            var genreFilter = string.IsNullOrWhiteSpace(genreIds) ? string.Empty : $"&with_genres={genreIds}";
-            var discoverUrl = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=100&page={page}{genreFilter}";
-            var discoverRes = await client.GetAsync(discoverUrl).ConfigureAwait(false);
-
-            if (discoverRes.IsSuccessStatusCode)
-            {
-                var discoverJson = await discoverRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                var discoverDoc = JsonDocument.Parse(discoverJson);
-                if (discoverDoc.RootElement.TryGetProperty("results", out var discoverResults))
-                {
-                    foreach (var movie in discoverResults.EnumerateArray())
-                    {
-                        if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
-                        {
-                            if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
-                                allResults.Add(movie);
-                        }
-                    }
-                }
-            }
-
-            // 4. People-based discover: directors + actors the user loves (strongest personalisation signal)
-            var allPersonIds = new List<string>();
-            if (!string.IsNullOrWhiteSpace(directorIds))
-                allPersonIds.AddRange(directorIds.Split(',', StringSplitOptions.RemoveEmptyEntries));
-            if (!string.IsNullOrWhiteSpace(actorIds))
-                allPersonIds.AddRange(actorIds.Split(',', StringSplitOptions.RemoveEmptyEntries));
-            var topPersonFilter = string.Join("|", allPersonIds.Take(5));
-
-            if (!string.IsNullOrWhiteSpace(topPersonFilter))
+            // ── Source 2: /similar for top 3 seeds (+15) ──────────────────────────────────
+            var simTasks = seedIds.Take(3).Select(async seedId =>
             {
                 try
                 {
-                    var peopleUrl = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={Uri.EscapeDataString(topPersonFilter)}&page=1";
-                    var peopleRes = await client.GetAsync(peopleUrl).ConfigureAwait(false);
-                    if (peopleRes.IsSuccessStatusCode)
-                    {
-                        var peopleJson = await peopleRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        var peopleDoc = JsonDocument.Parse(peopleJson);
-                        if (peopleDoc.RootElement.TryGetProperty("results", out var peopleResults))
-                        {
-                            foreach (var movie in peopleResults.EnumerateArray())
-                            {
-                                if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
-                                {
-                                    if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
-                                        allResults.Add(movie);
-                                }
-                            }
-                        }
-                    }
+                    var url = $"{TmdbBaseUrl}/movie/{seedId}/similar?api_key={apiKey}&language=en-US&page=1";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 15.0);
                 }
-                catch (Exception pEx)
-                {
-                    _logger.LogWarning(pEx, "[UpcomingMovies] People-based discover failed");
-                }
-            }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] similar/{Id} failed", seedId); }
+            });
 
-            // 5. Fallback to trending if no results
-            if (allResults.Count == 0)
+            // ── Source 3: Genre-weighted discover (+0 — genre scoring applied inline) ────
+            var genreTask = Task.Run(async () =>
             {
-                var trendUrl = $"{TmdbBaseUrl}/trending/movie/week?api_key={apiKey}&language=en-US";
-                var trendRes = await client.GetAsync(trendUrl).ConfigureAwait(false);
-                if (trendRes.IsSuccessStatusCode)
+                try
                 {
-                    var trendJson = await trendRes.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    var trendDoc = JsonDocument.Parse(trendJson);
-                    if (trendDoc.RootElement.TryGetProperty("results", out var trendResults))
+                    var genreFilter = topGenres.Count > 0
+                        ? "&with_genres=" + Uri.EscapeDataString(string.Join("|", topGenres))
+                        : string.Empty;
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=100&page={page}{genreFilter}";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 0.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] genre discover failed"); }
+            });
+
+            // ── Source 4: Director-based discover (+50 — strongest taste signal) ──────────
+            var directorTask = Task.Run(async () =>
+            {
+                if (topDirs.Count == 0) return;
+                try
+                {
+                    var pf = Uri.EscapeDataString(string.Join("|", topDirs));
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={pf}&page=1";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 50.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] director discover failed"); }
+            });
+
+            // ── Source 5: Actor-based discover (+40) ────────────────────────────────────
+            var actorTask = Task.Run(async () =>
+            {
+                if (topActors.Count == 0) return;
+                try
+                {
+                    var pf = Uri.EscapeDataString(string.Join("|", topActors));
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={pf}&page=1";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 40.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] actor discover failed"); }
+            });
+
+            // ── Source 6: Trending fallback for new users with no watch history (+5) ──────
+            var trendingTask = Task.Run(async () =>
+            {
+                if (hasProfile) return;
+                try
+                {
+                    var url = $"{TmdbBaseUrl}/trending/movie/week?api_key={apiKey}&language=en-US";
+                    var res = await client.GetAsync(url).ConfigureAwait(false);
+                    if (!res.IsSuccessStatusCode) return;
+                    var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("results", out var results))
+                        foreach (var m in results.EnumerateArray())
+                            AddCandidate(m, 5.0);
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] trending fallback failed"); }
+            });
+
+            // Run all sources in parallel for speed
+            await Task.WhenAll(
+                Task.WhenAll(seedTasks),
+                Task.WhenAll(simTasks),
+                genreTask,
+                directorTask,
+                actorTask,
+                trendingTask
+            ).ConfigureAwait(false);
+
+            // ── Scoring engine ─────────────────────────────────────────────────────────────
+            var today = DateTime.UtcNow;
+
+            var scored = candidateElements.Select(kv =>
+            {
+                var movieId = kv.Key;
+                var m = kv.Value;
+
+                // Start with source bonus (director/actor/seed sourcing)
+                double score = candidateSourceBonus.GetValueOrDefault(movieId);
+
+                // Genre weights: each matching genre contributes its profile weight × 1.5
+                if (m.TryGetProperty("genre_ids", out var genreArr))
+                {
+                    foreach (var g in genreArr.EnumerateArray())
                     {
-                        foreach (var movie in trendResults.EnumerateArray())
-                        {
-                            if (movie.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var movieId))
-                            {
-                                if (!excludeIds.Contains(movieId) && seenIds.Add(movieId))
-                                {
-                                    allResults.Add(movie);
-                                }
-                            }
-                        }
+                        if (g.TryGetInt32(out var gid))
+                            score += profile.GenreWeights.GetValueOrDefault(gid) * 1.5;
                     }
                 }
-            }
 
-            // Sort by vote_average descending and take top 40
-            var sorted = allResults
-                .OrderByDescending(m =>
+                // Language affinity: 2× multiplier for preferred language
+                if (m.TryGetProperty("original_language", out var langProp))
                 {
-                    if (m.TryGetProperty("vote_average", out var va) && va.TryGetDouble(out var d)) return d;
-                    return 0.0;
-                })
-                .Take(40)
-                .ToList();
+                    var lang = langProp.GetString() ?? "en";
+                    score += profile.LanguageWeights.GetValueOrDefault(lang) * 2.0;
+                }
+
+                // Vote average quality signal (0–10 → 0–50 pts)
+                if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out var va))
+                    score += va * 5.0;
+
+                // Popularity (capped at 100 to avoid over-weighting blockbusters)
+                if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out var pop))
+                    score += Math.Min(pop, 100) * 0.3;
+
+                // Recency bonus/penalty
+                if (m.TryGetProperty("release_date", out var rdProp) &&
+                    DateTime.TryParse(rdProp.GetString(), out var releaseDate))
+                {
+                    var yearsOld = (today - releaseDate).TotalDays / 365.25;
+                    if (yearsOld <= 2) score += 20;
+                    else if (yearsOld > 10) score -= 10;
+                }
+
+                return (movieId, score, element: m);
+            })
+            .OrderByDescending(x => x.score)
+            .Take(60)
+            .Select(x => x.element)
+            .ToList();
 
             var finalJson = JsonSerializer.Serialize(new
             {
-                results = sorted,
-                total_results = sorted.Count,
-                page = page,
+                results = scored,
+                total_results = scored.Count,
+                page,
                 total_pages = 500
             });
+
+            _logger.LogInformation(
+                "[UpcomingMovies] Recommendations for user {UserId}: {Count} scored " +
+                "(watched={Watched}, genres={Genres}, dirs={Dirs}, actors={Actors})",
+                userId, scored.Count,
+                profile.TotalWatched,
+                profile.GenreWeights.Count,
+                profile.DirectorWeights.Count,
+                profile.ActorWeights.Count);
 
             return Content(finalJson, "application/json");
         }
@@ -288,6 +340,37 @@ public class TmdbController : ControllerBase
             _logger.LogError(ex, "[UpcomingMovies] Unhandled exception in GetRecommendations");
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Returns the current user's profile summary (for debugging / admin view).
+    /// </summary>
+    [HttpGet("profile")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public IActionResult GetProfile([FromQuery] string userId = "")
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            return BadRequest(new { error = "userId is required" });
+
+        var profile = _profileService.GetProfile(userId);
+        return Ok(new
+        {
+            userId = profile.UserId,
+            lastUpdated = profile.LastUpdated,
+            totalWatched = profile.TotalWatched,
+            topGenres = _profileService.GetTopGenres(profile, 10)
+                .Select(id => new { id, name = UserProfileService.TmdbGenreIdToName.GetValueOrDefault(id, id.ToString()), weight = profile.GenreWeights.GetValueOrDefault(id) }),
+            topDirectors = _profileService.GetTopDirectors(profile, 5)
+                .Select(id => new { id, weight = profile.DirectorWeights.GetValueOrDefault(id) }),
+            topActors = _profileService.GetTopActors(profile, 5)
+                .Select(id => new { id, weight = profile.ActorWeights.GetValueOrDefault(id) }),
+            topLanguages = profile.LanguageWeights
+                .OrderByDescending(kv => kv.Value).Take(5)
+                .Select(kv => new { language = kv.Key, weight = kv.Value }),
+            recentWatches = profile.RecentWatches.Take(10)
+                .Select(w => new { w.TmdbId, watchedAt = w.WatchedAt, language = w.Language })
+        });
     }
 
     /// <summary>
@@ -303,12 +386,13 @@ public class TmdbController : ControllerBase
             var config = Plugin.Instance?.Configuration;
             return Ok(new
             {
-                streamBaseUrl = config?.StreamBaseUrl ?? string.Empty,
-                navPlacement = config?.NavPlacement.ToString() ?? "Sidebar",
-                showUpcoming = config?.ShowUpcomingSection ?? true,
-                showRecommendations = config?.ShowRecommendationsSection ?? true,
-                tmdbConfigured = !string.IsNullOrWhiteSpace(config?.TmdbApiKey),
-                jellyseerrConfigured = !string.IsNullOrWhiteSpace(config?.JellyseerrApiKey) && !string.IsNullOrWhiteSpace(config?.JellyseerrUrl)
+                streamBaseUrl           = config?.StreamBaseUrl ?? string.Empty,
+                navPlacement            = config?.NavPlacement.ToString() ?? "Sidebar",
+                showUpcoming            = config?.ShowUpcomingSection ?? true,
+                showRecommendations     = config?.ShowRecommendationsSection ?? true,
+                tmdbConfigured          = !string.IsNullOrWhiteSpace(config?.TmdbApiKey),
+                jellyseerrConfigured    = !string.IsNullOrWhiteSpace(config?.JellyseerrApiKey)
+                                       && !string.IsNullOrWhiteSpace(config?.JellyseerrUrl)
             });
         }
         catch (Exception ex)
