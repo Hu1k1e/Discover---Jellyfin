@@ -2,7 +2,114 @@
 
 ---
 
-# 1. Project Overview
+> [!IMPORTANT]
+> **Read the Deployment Process section below before pushing any release.**
+
+---
+
+# DEPLOYMENT PROCESS — How to Release a New Version
+
+This is the exact procedure to push a change and have it appear in Jellyfin's plugin catalog. **Follow every step.** Past failures came from skipping steps or doing them out of order.
+
+## Step 1 — Make + Commit Your Changes
+
+```powershell
+git add <changed files>
+git commit -m "fix: description of what changed"
+```
+
+## Step 2 — Push the Main Branch
+
+```powershell
+git push origin main
+```
+
+> If the push is rejected ("non-fast-forward"), pull and rebase first:
+> ```powershell
+> git pull --rebase origin main
+> git push origin main
+> ```
+> PowerShell may show exit code 1 even on success — check the output for `main -> main` to confirm.
+
+## Step 3 — Create + Push a Version Tag
+
+The GitHub Actions workflow **only triggers on `v*` tags**, NOT on regular commits.
+
+```powershell
+git tag v1.0.XX    # replace XX with next version number (e.g. v1.0.48)
+git push origin v1.0.XX
+```
+
+Confirm success: output should include `* [new tag] v1.0.XX -> v1.0.XX`
+
+## Step 4 — Wait for GitHub Actions (~2 minutes)
+
+The workflow (`.github/workflows/build-release.yml`) will automatically:
+1. Build the plugin `.dll` 
+2. Create a ZIP: `jellyfin-plugin-upcoming-movies_v1.0.XX.zip`
+3. Compute the MD5 checksum
+4. **Prepend a new version entry to `manifest.json`** and commit it to `main`
+5. Create a GitHub Release with the ZIP as an asset
+
+## Step 5 — Pull the Actions Bot Commit
+
+After the workflow completes, the Actions bot commits an updated `manifest.json` to `main`. Pull it so local is in sync:
+
+```powershell
+git pull origin main
+```
+
+Verify `manifest.json` starts with `"version": "1.0.XX.0"` — that's the confirmation it worked.
+
+## Step 6 — Verify the Release
+
+Check: `https://api.github.com/repos/Hu1k1e/Discover---Jellyfin/releases?per_page=1`  
+Should show the new release with `"tag_name": "v1.0.XX"` and a non-empty `assets` array.
+
+---
+
+## Troubleshooting: Manifest Not Updated (v not appearing in Jellyfin)
+
+**Symptom:** GitHub release exists (ZIP uploaded) but Jellyfin catalog still shows old version.  
+**Cause:** The Actions bot tried to push the manifest update but failed (usually due to a rebase conflict on `main`).  
+**Fix:** Manually add the entry to `manifest.json`:
+
+```json
+{
+  "version": "1.0.XX.0",
+  "changelog": "Release 1.0.XX.0. See GitHub for details.",
+  "targetAbi": "10.11.0.0",
+  "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.XX/jellyfin-plugin-upcoming-movies_v1.0.XX.zip",
+  "checksum": "<MD5 from the GitHub release body>",
+  "timestamp": "<timestamp from the GitHub release>"
+}
+```
+
+Get the ZIP MD5 from the GitHub release description (it's printed as `**ZIP MD5:** `...``).  
+Prepend this object at position `[0].versions[0]` (the very first entry in the array), then:
+
+```powershell
+git add manifest.json
+git commit -m "chore: manually update manifest for v1.0.XX"
+git push origin main
+```
+
+---
+
+## Version Numbering
+
+| Convention | Example |
+|---|---|
+| Git tag | `v1.0.47` |
+| manifest.json `"version"` | `"1.0.47.0"` (always append `.0`) |
+| ZIP filename | `jellyfin-plugin-upcoming-movies_v1.0.47.zip` |
+
+Always increment the **third** number (patch): `v1.0.46` → `v1.0.47`.  
+Never reuse a tag — git will reject it and a duplicate will cause manifest corruption.
+
+---
+
+
 
 This project is a custom Jellyfin Plugin introducing a native "Upcoming Movies & Recommendations" Discover page into the Jellyfin Web UI.
 
