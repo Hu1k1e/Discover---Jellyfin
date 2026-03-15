@@ -141,7 +141,7 @@ public class TmdbController : ControllerBase
                 lock (lock_)
                 {
                     if (!candidateElements.ContainsKey(movieId))
-                        candidateElements[movieId] = movie;
+                        candidateElements[movieId] = movie.Clone(); // Clone so element outlives the 'using var doc' in each parallel task
                     if (!candidateSourceBonus.TryGetValue(movieId, out var existing) || sourceBonus > existing)
                         candidateSourceBonus[movieId] = sourceBonus;
                 }
