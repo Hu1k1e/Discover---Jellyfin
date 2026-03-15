@@ -231,7 +231,16 @@ https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/manifest.json
 
 # 10. Current Status
 
-**Latest Release: v1.0.26** — Phase 19 completed (fast recommendations, Radarr pre-cache, requested-state fix).
+---
+
+## Phase 20 — Restore Movie Detail Popup on Card Click (2026-03-15) ✅
+
+| Bug | Root Cause | Fix |
+|-----|------------|-----|
+| Movie detail popup not appearing on card click | `showOverviewModal` crashed immediately with `ReferenceError: tmdbId is not defined` — the function referenced bare `tmdbId` instead of `opts.tmdbId` on line 760. This silently killed the entire modal. | Changed to `window._jellyseerrRequests.has(String(opts.tmdbId))` |
+| Request button inside popup did nothing | No click handler was wired for `.btn-request` inside the overview modal HTML. | Added `modalReqBtn.addEventListener('click', ...)` that closes the overview modal and opens `openRequestModal()` correctly. |
+
+**Latest Release: v1.0.27** — Phase 20 completed (movie detail popup restored).
 
 **To install:**
 1. Dashboard → Plugins → Repositories → add manifest URL above
