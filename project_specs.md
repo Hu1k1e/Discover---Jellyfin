@@ -540,4 +540,18 @@ A sub-par English film (6.0/10 = 36 quality + 50 language ≈ 86) will now outra
 |------|-----|
 | Requested text size | `font-size: 10px` now scoped to `.discover-card:not(.upcoming-card) .btn-request.requested` — only applies when Request + Stream sit side-by-side in Recommended. Upcoming cards keep normal inherited font size |
 | Deduplication | Confirmed already per-section: `seenIds = new Set()` is local to each `renderTmdbCards()` call — duplicates between Upcoming and Recommended are allowed, duplicates within the same section are prevented |
+
+---
+
+## Phase 26 — Discover More Dedup + Ratings Cache (2026-03-15) ✅
+
+**Latest Release: v1.0.39**
+
+| Area | Problem | Fix |
+|------|---------|-----|
+| Discover More duplicates | Backend re-runs scoring fresh per page → overlapping candidates | `_renderedRecIds = new Set()` scoped to rec session; both initial render and every Discover More append filter + register against it |
+| OMDB ratings quota | Every modal open triggered a fresh OMDB call even for same movie | `window._ratingsCache = {}` by tmdbId — repeat opens read from cache, no extra API call |
+| Project Hail Mary | Disappeared from Upcoming, appeared in Recommended | Confirmed correct: PHM release date was 2026-02-21 (past today 2026-03-15). TMDB correctly removes released films from upcoming list |
+| Ratings showing "—" | Some movies have no RT/IMDB data in OMDB | Expected for brand-new releases not yet scraped by OMDB. 🎬 Jellyfin badge always shows (direct TMDB source) |
+
 
