@@ -60,76 +60,121 @@ public class UserDataSavedConsumer
         if (e.UserData.Played)
         {
             // Full watch signal — strongest taste indicator, triggers decay of old weights
-            Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: false));
+            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: false));
         }
         else if (e.UserData.Likes == true)
         {
             // Watchlist signal — user bookmarked this movie (our /Rating?Likes=true call)
-            Task.Run(() => FetchCreditsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: true));
+            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: true));
         }
     }
 
-    private async Task FetchCreditsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds, bool isWatchlist)
+    /// <summary>
+    /// Fetches TMDB movie details (for original_language) and credits (directors/actors),
+    /// then updates the user profile with the appropriate signal weight.
+    ///
+    /// IMPORTANT: We MUST fetch the actual original_language from TMDB rather than defaulting
+    /// to "en". A user who watches Malayalam movies should accumulate LanguageWeights["ml"],
+    /// not LanguageWeights["en"], so that the recommendation engine can surface regional content.
+    /// </summary>
+    private async Task FetchDetailsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds, bool isWatchlist)
     {
         var directors = new List<int>();
         var actors    = new List<int>();
+        var language  = "en"; // fallback only — overwritten by TMDB response below
 
         try
         {
             var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                var client   = _httpClientFactory.CreateClient();
-                var url      = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
-                var response = await client.GetAsync(url).ConfigureAwait(false);
+                var client = _httpClientFactory.CreateClient();
 
-                if (response.IsSuccessStatusCode)
+                // ── Fetch 1: Movie details for original_language ──────────────────────────
+                // This is the CRITICAL call that makes language weighting work correctly.
+                // Without it, all movies default to "en" regardless of their actual language.
+                try
                 {
-                    var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                    using var doc = JsonDocument.Parse(json);
-
-                    // Directors from crew
-                    if (doc.RootElement.TryGetProperty("crew", out var crew))
+                    var detailsUrl = $"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}&language=en-US";
+                    var detailsRes = await client.GetAsync(detailsUrl).ConfigureAwait(false);
+                    if (detailsRes.IsSuccessStatusCode)
                     {
-                        foreach (var member in crew.EnumerateArray())
+                        var detailsJson = await detailsRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        using var detailsDoc = JsonDocument.Parse(detailsJson);
+                        if (detailsDoc.RootElement.TryGetProperty("original_language", out var langEl))
                         {
-                            if (member.TryGetProperty("job", out var job) &&
-                                job.GetString()?.Equals("Director", StringComparison.OrdinalIgnoreCase) == true &&
-                                member.TryGetProperty("id", out var idEl) &&
-                                idEl.TryGetInt32(out var personId))
+                            var fetchedLang = langEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(fetchedLang))
+                                language = fetchedLang;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[UpcomingMovies] TMDB details fetch failed for {TmdbId}", tmdbId);
+                }
+
+                // ── Fetch 2: Credits for directors and top actors ──────────────────────────
+                try
+                {
+                    var creditsUrl = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}";
+                    var creditsRes = await client.GetAsync(creditsUrl).ConfigureAwait(false);
+                    if (creditsRes.IsSuccessStatusCode)
+                    {
+                        var creditsJson = await creditsRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        using var creditsDoc = JsonDocument.Parse(creditsJson);
+
+                        // Directors from crew
+                        if (creditsDoc.RootElement.TryGetProperty("crew", out var crew))
+                        {
+                            foreach (var member in crew.EnumerateArray())
                             {
-                                directors.Add(personId);
+                                if (member.TryGetProperty("job", out var job) &&
+                                    job.GetString()?.Equals("Director", StringComparison.OrdinalIgnoreCase) == true &&
+                                    member.TryGetProperty("id", out var idEl) &&
+                                    idEl.TryGetInt32(out var personId))
+                                {
+                                    directors.Add(personId);
+                                }
+                            }
+                        }
+
+                        // Top-billed actors (first 5)
+                        if (creditsDoc.RootElement.TryGetProperty("cast", out var cast))
+                        {
+                            foreach (var member in cast.EnumerateArray().Take(5))
+                            {
+                                if (member.TryGetProperty("id", out var idEl) &&
+                                    idEl.TryGetInt32(out var personId))
+                                {
+                                    actors.Add(personId);
+                                }
                             }
                         }
                     }
-
-                    // Top-billed actors (first 5)
-                    if (doc.RootElement.TryGetProperty("cast", out var cast))
-                    {
-                        foreach (var member in cast.EnumerateArray().Take(5))
-                        {
-                            if (member.TryGetProperty("id", out var idEl) &&
-                                idEl.TryGetInt32(out var personId))
-                            {
-                                actors.Add(personId);
-                            }
-                        }
-                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
+            _logger.LogWarning(ex, "[UpcomingMovies] Profile update fetch failed for {TmdbId}", tmdbId);
         }
+
+        _logger.LogInformation(
+            "[UpcomingMovies] Profile update: user={UserId} tmdb={TmdbId} lang={Lang} watchlist={WL}",
+            userId, tmdbId, language, isWatchlist);
 
         if (isWatchlist)
         {
-            _profileService.UpdateWithWatchlist(userId, tmdbId, genreIds, "en", directors, actors);
+            _profileService.UpdateWithWatchlist(userId, tmdbId, genreIds, language, directors, actors);
         }
         else
         {
-            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, "en", directors, actors);
+            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
         }
     }
 }

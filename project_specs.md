@@ -929,3 +929,44 @@ Watchlist seeds get +22 bonus (between +30 and +15) because watchlist intent is 
 |------|--------|
 | `Api/TmdbController.cs` | Sources 1/2/3 cycle TMDB pages per `page` param; `AddCandidate` gains `bypassLangFilter` param; Source 9 language-affinity discover (+18); backend output paginated to 20/page from scored pool |
 | `Web/discoverPage.js` | `ensureRecommendationsBuffer` fetches 3× targetCount; deduplication against `_renderedRecIds` moved into buffer fill loop (not after splice) |
+
+---
+
+## Phase 35 — Infinite Scroll + Language Profile Bug Fix (2026-03-15) ✅
+
+**Release: v1.0.51**
+
+### Critical Bug: Regional Languages Not Recommended (e.g., Malayalam)
+
+**Root cause:** `UserDataSavedConsumer.FetchCreditsAndUpdateAsync` had `language` hardcoded to `"en"` for every movie. This meant:
+- A user who watches 100 Malayalam films accumulated `LanguageWeights["en"] += 500` but `LanguageWeights["ml"] = 0`
+- Source 9 (language-affinity discover) never activated because `ml` weight was always 0
+- The scoring `NW(LanguageWeights.GetValueOrDefault("ml")) × 6.0` always added 0 pts for Malayalam films
+
+**Fix:** `UserDataSavedConsumer` now fetches `/movie/{tmdbId}` from TMDB to get `original_language` before updating the profile. The real language (`ml`, `hi`, `ta`, etc.) is now correctly recorded.
+
+### Fix: Discover More Disappearing After 4–5 Clicks
+
+**Root cause:** When `_tmdbRecPage > _tmdbRecTotalPages` (50 virtual pages = ~1000 items), the button was hidden with `style.display='none'` even though the engine can always generate new pages.
+
+**Fix (Infinite Scroll):** When the page cycle exhausts:
+1. `_tmdbRecPage` resets to 2 (page 1 was the initial load)
+2. `_renderedRecIds` is cleared (fresh dedup cycle)
+3. Button is **never hidden** — the engine keeps cycling backend pages indefinitely
+
+### Source 9 Improvements
+
+| Before | After |
+|--------|-------|
+| Single language only | Up to **2 top non-English languages** in parallel |
+| Threshold: weight ≥ 2.5 (never triggered) | Threshold: weight **≥ 0.5** (any single watch) |
+| Min vote_count: 50 | Min vote_count: **20** (more regional content) |
+| No fallback if genre filter returns nothing | **Genre fallback**: if <5 results with genre filter, also fetches without genre restriction at +15 |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/UserDataSavedConsumer.cs` | Added `/movie/{tmdbId}` TMDB fetch to get actual `original_language`; renamed method to `FetchDetailsAndUpdateAsync` |
+| `Api/TmdbController.cs` | Source 9: multi-language (top 2), threshold 0.5, vote_count 20, genre fallback at +15 |
+| `Web/discoverPage.js` | Infinite scroll: page cycle wraps instead of hiding button; button never hides |
