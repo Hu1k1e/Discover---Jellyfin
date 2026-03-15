@@ -624,11 +624,11 @@ Watching 2–3 movies in the same genre caused that genre to dominate all 60 rec
 A green bookmark icon (`▲`) appears top-left of the poster on every **available** movie card (movies that exist in the Jellyfin library). Clicking toggles the movie in/out of the Jellyfin native watchlist.
 
 - **Only appears** on available cards (those with a Jellyfin ID). Never on upcoming or TMDB-only unavailable cards.
-- **Toggle behaviour:** outline icon = not watchlisted, filled green = watchlisted. State is read from `UserData.IsWatchlisted` when the library map is fetched on page load.
-- **API:** `POST /UserWatchlistItems/{jellyfinId}` to add, `DELETE /UserWatchlistItems/{jellyfinId}` to remove — Jellyfin native watchlist API (same as KefinTweaks).
+- **Toggle behaviour:** outline icon = not watchlisted, filled green = watchlisted. State is read from `UserData.Likes` when the library map is fetched on page load (matches KefinTweaks).
+- **API:** `POST /Users/{userId}/LikedItems/{jellyfinId}` to add, `DELETE /Users/{userId}/LikedItems/{jellyfinId}` to remove — maps to `UserData.Likes = true`, which is KefinTweaks' watchlist field.
 
 #### 2. Auto-Watchlist on Request Fulfillment
-When a user clicks **Request** on an unavailable movie, the server records a `(userId, tmdbId)` pending entry. When Radarr downloads the movie and Jellyfin adds it to the library, `ILibraryManager.ItemAdded` fires — the plugin matches the TMDB ID against the pending list and calls `POST /UserWatchlistItems/{itemId}?userId={userId}` for each waiting user.
+When a user clicks **Request** on an unavailable movie, the server records a `(userId, tmdbId)` pending entry. When Radarr downloads the movie and Jellyfin adds it to the library, `ILibraryManager.ItemAdded` fires — the plugin matches the TMDB ID against the pending list and calls `POST /Users/{userId}/LikedItems/{itemId}` for each waiting user.
 
 - **Pending store:** `upcomingmovies_profiles/watchlist_pending.json` in Jellyfin data folder.
 - **Auth:** Requires a Jellyfin Admin API key in plugin settings (Dashboard → API Keys).
@@ -644,9 +644,42 @@ When a user clicks **Request** on an unavailable movie, the server records a `(u
 | `Configuration/PluginConfiguration.cs` | Added `JellyfinLocalUrl`, `JellyfinLocalApiKey` |
 | `Configuration/configPage.html` | Added "Auto-Watchlist" section with both new fields |
 | `Api/JellyseerrController.cs` | After successful request → `WatchlistService.AddPending(userId, tmdbId)` |
-| `Web/discoverPage.js` | `.dc-watchlist-btn` CSS; bookmark HTML in `buildCard()`; `addToWatchlist()`/`removeFromWatchlist()` helpers; `isWatchlisted` in tmdbMap |
+| `Web/discoverPage.js` | `.dc-watchlist-btn` CSS; bookmark HTML in `buildCard()`; `addToWatchlist()`/`removeFromWatchlist()` helpers; `isWatchlisted` reads `UserData.Likes` in tmdbMap |
 
 ### Configuration Required for Auto-Watchlist
 In **Dashboard → Plugins → Upcoming Movies → Auto-Watchlist**:
 1. **Jellyfin Local URL** — e.g. `http://localhost:8096`
 2. **Jellyfin Admin API Key** — generate in Dashboard → API Keys
+
+---
+
+## Phase 30 — Watchlist Sync Fix (2026-03-15) ✅
+
+**Release: v1.0.46**
+
+### Root Cause Found
+
+KefinTweaks watchlist uses Jellyfin's `UserData.Likes` field (not `IsFavorite` or `IsWatchlisted`). The plugin's `addToWatchlist()` / `removeFromWatchlist()` were calling the correct API endpoint (`/Users/{uid}/LikedItems/{id}`) but with the **wrong auth header**, causing silent 401/403 failures:
+
+| | Before (broken) | After (fixed) |
+|---|---|---|
+| Header key | `X-Emby-Token` | `X-Emby-Authorization` |
+| Header value | raw token string | `MediaBrowser Token="...", Client="...", Device="...", DeviceId="...", Version="..."` |
+| Server address | `client._serverAddress` (private prop) | `client.serverAddress()` (method call) |
+
+Jellyfin's REST API requires the full `MediaBrowser` format in `X-Emby-Authorization`. The rest of the codebase already used `getJellyfinAuthHeader()` which builds this string — the watchlist helpers were simply not using it.
+
+### KefinTweaks Watchlist API (Confirmed)
+
+| Action | Endpoint | Effect |
+|--------|----------|--------|
+| Add to watchlist | `POST /Users/{userId}/LikedItems/{itemId}` | Sets `UserData.Likes = true` |
+| Remove from watchlist | `DELETE /Users/{userId}/LikedItems/{itemId}` | Clears `UserData.Likes` |
+| Fetch watchlist | `window.apiHelper.getWatchlistItems()` | Queries items with `Filters=IsLiked` |
+| Initial state | `item.UserData.Likes` | Read on library fetch in `tmdbMap` |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Fixed `addToWatchlist()` and `removeFromWatchlist()` to use `X-Emby-Authorization` header with `getJellyfinAuthHeader()` and `client.serverAddress()` |
