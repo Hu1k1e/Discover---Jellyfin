@@ -1096,3 +1096,26 @@ Korean showed up because the user watched Korean movies **after** v1.0.51 was de
 | File | Change |
 |------|--------|
 | `Services/UserDataSavedConsumer.cs` | Added `RepairLanguageWeightsIfNeededAsync` — lazy profile repair from TMDB history |
+
+---
+
+## Phase 40 — All Whitelisted Languages Get Equal Source 9 Coverage (2026-03-15) ✅
+
+**Release: v1.0.55**
+
+### Change: Source 9 Now Covers All 6 Whitelisted Non-English Languages
+
+**Before:** Source 9 took the top 2 non-English languages. A user who watches Hindi, Malayalam, and Tamil equally would only get recommendations for 2 of the 3.
+
+**After:** Source 9 covers **all** whitelisted non-English languages the user has weight for — same set as the `AddCandidate` language filter: `hi`, `ta`, `ml`, `te`, `ko`, `ja`. Each language with weight ≥ 0.5 gets its own parallel TMDB discover fetch. A user watching 3 Indian languages gets recommendations from all 3.
+
+The whitelist is defined as `HashSet<string> { "hi", "ta", "ml", "te", "ko", "ja" }` — exactly mirroring the `AddCandidate` allowlist, ensuring consistency across all parts of the pipeline.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Removed `.Take(2)` limit on Source 9; added `whitelistedNonEnglish` HashSet to restrict to exactly the same set as AddCandidate |
+
+### Version Numbering Convention
+Current version: **1.0.55**. Next release: **1.0.56**. Always increment the third part by 1.

@@ -328,20 +328,21 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] wl-seed recommendations/{Id} failed", wlId); }
             });
 
-            // ── Source 9: Language-affinity discover — top non-English languages (+18) ────
-            // Discovers movies specifically in the user's most-watched non-English language(s).
-            // This is the ONLY source that surfaces regional films (Malayalam, Hindi, Korean…)
+            // ── Source 9: Language-affinity discover — all whitelisted non-English languages (+18) ────
+            // Discovers movies specifically in the user's watched non-English language(s).
+            // This is the ONLY source that surfaces regional films (Malayalam, Hindi, Tamil, Telugu…)
             // because all other sources default to TMDB's en-US language preference.
             //
-            // Activation: any non-English language weight >= 0.5 (triggered by even a single
-            // watched or watchlisted film in that language).
+            // Covers ALL 6 whitelisted regional languages (hi, ta, ml, te, ko, ja) that the user has
+            // weight for — same set as AddCandidate's allowlist. Every language with weight >= 0.5
+            // gets its own parallel TMDB discover fetch, so a user who watches Hindi AND Tamil AND
+            // Malayalam all get discovered content, not just the top 2.
             //
-            // Up to 2 top non-English languages are fetched in parallel so bilingual users
-            // (e.g., someone who watches both Malayalam and Hindi) get both covered.
+            // Activation: any whitelisted non-English language weight >= 0.5 (even 1 watch = weight 5.0).
+            var whitelistedNonEnglish = new HashSet<string> { "hi", "ta", "ml", "te", "ko", "ja" };
             var topNonEnglishLangs = profile.LanguageWeights
-                .Where(kv => kv.Key != "en" && kv.Value >= 0.5)
+                .Where(kv => whitelistedNonEnglish.Contains(kv.Key) && kv.Value >= 0.5)
                 .OrderByDescending(kv => kv.Value)
-                .Take(2)
                 .Select(kv => kv.Key)
                 .ToList();
 
