@@ -612,4 +612,41 @@ Watching 2–3 movies in the same genre caused that genre to dominate all 60 rec
 | Released ≤2 years | +10 | |
 | Released >10 years | −6 | |
 
-
+---
+
+## Phase 29 — Watchlist Integration (2026-03-15) ✅
+
+**Release: v1.0.42**
+
+### Features
+
+#### 1. Manual Watchlist Banner
+A green bookmark icon (`▲`) appears top-left of the poster on every **available** movie card (movies that exist in the Jellyfin library). Clicking toggles the movie in/out of the Jellyfin native watchlist.
+
+- **Only appears** on available cards (those with a Jellyfin ID). Never on upcoming or TMDB-only unavailable cards.
+- **Toggle behaviour:** outline icon = not watchlisted, filled green = watchlisted. State is read from `UserData.IsWatchlisted` when the library map is fetched on page load.
+- **API:** `POST /UserWatchlistItems/{jellyfinId}` to add, `DELETE /UserWatchlistItems/{jellyfinId}` to remove — Jellyfin native watchlist API (same as KefinTweaks).
+
+#### 2. Auto-Watchlist on Request Fulfillment
+When a user clicks **Request** on an unavailable movie, the server records a `(userId, tmdbId)` pending entry. When Radarr downloads the movie and Jellyfin adds it to the library, `ILibraryManager.ItemAdded` fires — the plugin matches the TMDB ID against the pending list and calls `POST /UserWatchlistItems/{itemId}?userId={userId}` for each waiting user.
+
+- **Pending store:** `upcomingmovies_profiles/watchlist_pending.json` in Jellyfin data folder.
+- **Auth:** Requires a Jellyfin Admin API key in plugin settings (Dashboard → API Keys).
+
+### New/Modified Files
+
+| File | Change |
+|------|--------|
+| `Model/WatchlistPendingEntry.cs` | [NEW] Data model: `{UserId, TmdbId, RequestedAt}` |
+| `Services/WatchlistPendingService.cs` | [NEW] Thread-safe JSON store for pending entries |
+| `Services/LibraryItemAddedConsumer.cs` | [NEW] Handles `ILibraryManager.ItemAdded` event; fulfills watchlist |
+| `Plugin.cs` | Added `ILibraryManager` DI, wires `LibraryItemAddedConsumer.OnItemAdded`, exposes `WatchlistService` static |
+| `Configuration/PluginConfiguration.cs` | Added `JellyfinLocalUrl`, `JellyfinLocalApiKey` |
+| `Configuration/configPage.html` | Added "Auto-Watchlist" section with both new fields |
+| `Api/JellyseerrController.cs` | After successful request → `WatchlistService.AddPending(userId, tmdbId)` |
+| `Web/discoverPage.js` | `.dc-watchlist-btn` CSS; bookmark HTML in `buildCard()`; `addToWatchlist()`/`removeFromWatchlist()` helpers; `isWatchlisted` in tmdbMap |
+
+### Configuration Required for Auto-Watchlist
+In **Dashboard → Plugins → Upcoming Movies → Auto-Watchlist**:
+1. **Jellyfin Local URL** — e.g. `http://localhost:8096`
+2. **Jellyfin Admin API Key** — generate in Dashboard → API Keys

@@ -218,6 +218,31 @@ public class JellyseerrController : ControllerBase
             }
 
             var json = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+            // ── Auto-watchlist pending ────────────────────────────────────────────────
+            // Record (userId, tmdbId) so that when Radarr downloads the movie and Jellyfin
+            // adds it to the library, LibraryItemAddedConsumer will auto-add it to the
+            // requesting user's Jellyfin watchlist.
+            try
+            {
+                var userId = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value
+                          ?? User.FindFirst("Jellyfin-UserId")?.Value
+                          ?? User.Identity?.Name;
+
+                if (!string.IsNullOrWhiteSpace(userId))
+                {
+                    Plugin.WatchlistService?.AddPending(userId, body.TmdbId);
+                    _logger.LogInformation(
+                        "[UpcomingMovies] Watchlist pending recorded: userId={UserId} tmdbId={TmdbId}",
+                        userId, body.TmdbId);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal — request was already submitted successfully
+                _logger.LogWarning(ex, "[UpcomingMovies] Failed to record watchlist pending entry");
+            }
+
             return Content(json, "application/json");
         }
         catch (HttpRequestException ex)
@@ -231,6 +256,7 @@ public class JellyseerrController : ControllerBase
             return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message });
         }
     }
+
 
     /// <summary>
     /// Fetches all requests from Jellyseerr to cross-reference and natively display "Requested" buttons.
