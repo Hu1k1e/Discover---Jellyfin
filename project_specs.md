@@ -1209,5 +1209,36 @@ Reverted to `repeat(auto-fit, minmax(150px, 1fr))`. With 15+ cards, `1fr` ≈ 16
 |------|--------|
 | `Web/discoverPage.js` | Grid CSS: `auto-fill 150px` → `auto-fit minmax(150px, 1fr)` |
 
+---
+
+## Phase 46 — Regional Movies Always Visible + Discover More Dedup (v1.0.62)
+
+### Bug 1: Default view shows only English movies
+**Root cause:** Source 9 (language-affinity discover) only fires when `langWeight >= 0.5` — i.e. the user has already watched regional films. New users or English-biased users never get regional movies in the default unfiltered view.
+
+**Fix — Source 11: always-on regional discover**
+- Runs for all 6 whitelisted non-English languages (`hi, ta, ml, te, ko, ja`) unconditionally
+- Fetches TMDB `popularity.desc` with `vote_count.gte=30`, rotating through 15 pages
+- Source bonus 10 (deliberately low) — enriches the candidate pool without overriding personalisation for English-focused users
+- 6 parallel HTTP calls run in `Task.WhenAll` alongside all other sources
+
+### Bug 2: Discover More shows duplicate movies
+**Root cause:** `ensureRecommendationsBuffer` checked `_renderedRecIds` (already on screen) but NOT IDs already in the buffer. So movie X from page 1 could still enter the buffer again from page 2 if it wasn't yet rendered.
+
+**Fix — `_bufferedRecIds` set**
+- New `_bufferedRecIds = new Set()` tracks every ID currently in the buffer
+- When a movie is added to the buffer, its ID is added to `_bufferedRecIds`
+- `ensureRecommendationsBuffer` now skips any movie present in either `_renderedRecIds` OR `_bufferedRecIds`
+- Buffer is seeded correctly from initial `rec.results` (each ID added to `_bufferedRecIds`)
+- Both sets are cleared on Apply filter reset and on infinite-scroll page wrap
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Source 11 always-on regional discover; included in `Task.WhenAll` |
+| `Web/discoverPage.js` | `_bufferedRecIds` set; `ensureRecommendationsBuffer` cross-page dedup; buffer seed fix |
+
+
 
 

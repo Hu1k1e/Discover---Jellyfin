@@ -513,6 +513,35 @@ public class TmdbController : ControllerBase
                 })
             }).ToList();
 
+            // ── Source 11: always-on regional diversity (bonus +10) ─────────────────────────
+            // Runs for every whitelisted non-English language regardless of user watch history.
+            // Source 9 only fires when the user has already watched enough regional films (langWeight >= 0.5).
+            // Source 11 guarantees regional movies are ALWAYS in the candidate pool for the default
+            // unfiltered view, so Hindi/Malayalam/Tamil/Telugu/Korean/Japanese movies appear even for
+            // users who primarily watch English films. Source bonus is intentionally lower (10) so
+            // English-biased users still see mostly personalised results, but with regional diversity
+            // weaved in by the scoring engine.
+            var alwaysOnRegionalLangs = new[] { "hi", "ta", "ml", "te", "ko", "ja" };
+            var regionalDiscoverTasks = alwaysOnRegionalLangs.Select(async langCode =>
+            {
+                try
+                {
+                    var tmdbPgR = ((page - 1) % 15) + 1; // rotate through 15 pages for variety
+                    var urlR = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US"
+                             + $"&with_original_language={langCode}"
+                             + $"&sort_by=popularity.desc&vote_count.gte=30&page={tmdbPgR}";
+                    var rR = await client.GetAsync(urlR).ConfigureAwait(false);
+                    if (rR.IsSuccessStatusCode)
+                    {
+                        using var dR = JsonDocument.Parse(await rR.Content.ReadAsStringAsync().ConfigureAwait(false));
+                        if (dR.RootElement.TryGetProperty("results", out var resR))
+                            foreach (var m in resR.EnumerateArray())
+                                AddCandidate(m, 10.0, bypassLangFilter: true);
+                    }
+                }
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] always-on regional({Lang}) failed", langCode); }
+            }).ToList();
+
             // Run all sources in parallel for speed
             await Task.WhenAll(
                 Task.WhenAll(seedTasks),
@@ -520,6 +549,8 @@ public class TmdbController : ControllerBase
                 Task.WhenAll(wlSeedTasks),
                 Task.WhenAll(langTasks),
                 Task.WhenAll(filterLangTasks),  // Source 10: filter-language explicit discover
+                Task.WhenAll(regionalDiscoverTasks), // Source 11: always-on regional diversity
+
                 genreTask,
                 directorTask,
                 actorTask,

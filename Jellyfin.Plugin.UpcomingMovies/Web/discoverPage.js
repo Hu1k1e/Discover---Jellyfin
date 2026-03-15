@@ -1448,6 +1448,8 @@
         var _tmdbRecTotalPages = 1;
         // Tracks every TMDB ID already rendered in recommendations
         var _renderedRecIds = new Set();
+        // Tracks every TMDB ID currently in the buffer (prevents cross-page dups from entering buffer)
+        var _bufferedRecIds = new Set();
 
         // ── Wire filter panel interactions (after all vars are in scope) ──
         // Pill toggle (language / genre)
@@ -1550,7 +1552,7 @@
                     } else if (sid === 'recommended' && rowRec) {
                         rowRec.innerHTML = '<div class="discover-loading">Filtering&hellip;</div>';
                         // Full reset of recommendation state
-                        _tmdbRecBuffer = []; _tmdbRecPage = 2; _renderedRecIds.clear(); _tmdbRecTotalPages = 50;
+                        _tmdbRecBuffer = []; _tmdbRecPage = 2; _renderedRecIds.clear(); _bufferedRecIds.clear(); _tmdbRecTotalPages = 50;
                         var rNew = await fetchRecommendations(1, _recFilters);
                         if (isSetup(rNew)) { rowRec.innerHTML = SETUP_HTML; }
                         else if (rNew && rNew.results) {
@@ -1588,7 +1590,8 @@
 
         async function ensureRecommendationsBuffer(targetCount) {
             // Fetch until buffer has enough items AFTER dedup, or we've exhausted all pages.
-            // We fetch up to 3× targetCount raw so the dedup filter still leaves enough.
+            // _bufferedRecIds tracks IDs in the buffer (cross-page dedup).
+            // _renderedRecIds tracks IDs already shown on screen (initial-load dedup).
             var fetchTarget = targetCount * 3;
             while (_tmdbRecBuffer.length < fetchTarget && _tmdbRecPage <= _tmdbRecTotalPages) {
                 var raw = await fetchRecommendations(_tmdbRecPage, _recFilters);
@@ -1599,7 +1602,10 @@
                 for(var j=0; j<raw.results.length; j++) {
                     var m = raw.results[j];
                     if (!m || !m.id) continue;
-                    if (_renderedRecIds.has(String(m.id))) continue; // skip already-shown
+                    var sid = String(m.id);
+                    if (_renderedRecIds.has(sid))  continue; // already on screen
+                    if (_bufferedRecIds.has(sid))   continue; // already in buffer (cross-page dup)
+                    _bufferedRecIds.add(sid);
                     var info = tmdbMap[m.id];
                     if (info && info.played) continue;
                     if (info) { m.isAvailable = true; m.jellyfinId = info.id; m.isWatchlisted = info.isWatchlisted; }
@@ -1608,7 +1614,6 @@
                 Array.prototype.push.apply(_tmdbRecBuffer, valid);
                 _tmdbRecPage++;
 
-                // Stop early if we already have enough unique items
                 if (_tmdbRecBuffer.length >= fetchTarget) break;
             }
         }
@@ -1626,7 +1631,13 @@
                 // Load initial chunk
                 _tmdbRecPage = 2; // already fetched page 1 in rec
                 _tmdbRecTotalPages = rec.total_pages || 1;
-                Array.prototype.push.apply(_tmdbRecBuffer, rec.results); // already filtered
+                // Seed buffer and _bufferedRecIds from initial page-1 results
+                rec.results.forEach(function(m) {
+                    if (m && m.id) {
+                        _bufferedRecIds.add(String(m.id));
+                        _tmdbRecBuffer.push(m);
+                    }
+                });
 
                 await ensureRecommendationsBuffer(targetCount);
 
@@ -1680,10 +1691,9 @@
                             // and clear the _renderedRecIds for a fresh cycle so the user
                             // keeps getting movies indefinitely.
                             if (_tmdbRecBuffer.length === 0 && _tmdbRecPage > _tmdbRecTotalPages) {
-                                // Wrap: restart the backend page cycle from page 2
-                                // (page 1 is reserved for initial load)
                                 _tmdbRecPage = 2;
                                 _renderedRecIds.clear();
+                                _bufferedRecIds.clear();
                                 LOG('Infinite scroll: wrapped page cycle back to page 2');
                             }
 
