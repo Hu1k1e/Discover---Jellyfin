@@ -70,7 +70,6 @@
             /* ── Row wrapper with arrow navigation ── */
             .discover-row-wrap {
                 position: relative;
-                padding: 0 2%;
             }
             .discover-row {
                 display: flex;
@@ -85,7 +84,7 @@
             .discover-row::-webkit-scrollbar { display: none; }
             .discover-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
                 gap: 24px;
                 padding-top: 4px; padding-bottom: 24px;
             }
@@ -198,7 +197,7 @@
             .dc-action-bar button:disabled { opacity: 1 !important; transform: none !important; cursor: default; }
 
             /* Hover Colors */
-            .btn-request:hover { background: #667BC6 !important; border-color: #667BC6 !important; }
+            .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
             .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; color: #fff !important; }
             .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
@@ -234,12 +233,12 @@
             }
 
             .htv-modal-close {
-                position: absolute; top: 16px; right: 16px; background: rgba(0,0,0,0.5);
-                border: none; color: #fff; font-size: 24px; width: 40px; height: 40px;
+                position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
+                border: none; color: #fff; font-size: 28px; width: 52px; height: 52px;
                 border-radius: 50%; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
                 transition: background 0.2s;
             }
-            .htv-modal-close:hover { background: rgba(255,255,255,0.2); }
+            .htv-modal-close:hover { background: rgba(255,255,255,0.25); }
             
             .htv-modal-body {
                 padding: 0 30px 30px 30px; display: flex; gap: 30px; margin-top: 120px; position: relative; z-index: 5;
@@ -264,7 +263,7 @@
                 background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;
             }
             .htv-modal-actions button:hover, .htv-modal-actions a:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-            .htv-modal-actions .btn-request:hover { background: #667BC6 !important; border-color: #667BC6 !important; }
+            .htv-modal-actions .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
             .htv-modal-actions .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; }
                REQUEST MODAL (Jellyseerr quality-profile)
@@ -999,11 +998,11 @@
         if (rowRec) {
             if (isSetup(rec)) { rowRec.innerHTML = SETUP_HTML; }
             else if (rec) {
-                // Determine target count (cols * 3)
+                // Determine target count (cols * 3) — always a full multiple of cols so last row is complete
                 var containerWidth = rowRec.clientWidth || 1000;
                 var cols = Math.floor((containerWidth + 24) / (150 + 24));
                 if (cols < 1) cols = 1;
-                var targetCount = cols * 3;
+                var targetCount = cols * 3; // exactly 3 complete rows
 
                 // Load initial chunk
                 _tmdbRecPage = 2; // already fetched page 1 in rec
@@ -1012,7 +1011,10 @@
 
                 await ensureRecommendationsBuffer(targetCount);
 
-                var sliceCount = Math.min(targetCount, _tmdbRecBuffer.length);
+                // Round up to a full row so the last row isn't incomplete
+                var availableCount = _tmdbRecBuffer.length;
+                var fullRowCount = Math.floor(availableCount / cols) * cols;
+                var sliceCount = fullRowCount > 0 ? Math.min(fullRowCount, targetCount) : Math.min(targetCount, availableCount);
                 var chunk = _tmdbRecBuffer.splice(0, sliceCount);
                 renderTmdbCards(chunk, rowRec, streamBaseUrl, false, false);
 
@@ -1028,7 +1030,10 @@
 
                             await ensureRecommendationsBuffer(dynTargetCount);
                             
-                            var sc = Math.min(dynTargetCount, _tmdbRecBuffer.length);
+                            // Round down to full rows so last row is always complete
+                            var dynAvail = _tmdbRecBuffer.length;
+                            var dynFullRows = Math.floor(dynAvail / dynCols) * dynCols;
+                            var sc = dynFullRows > 0 ? Math.min(dynFullRows, dynTargetCount) : Math.min(dynTargetCount, dynAvail);
                             var nextChunk = _tmdbRecBuffer.splice(0, sc);
                             if (nextChunk.length > 0) {
                                 renderTmdbCards(nextChunk, rowRec, streamBaseUrl, false, true);
@@ -1121,25 +1126,9 @@
         var placement = config.navPlacement || 'Sidebar';
 
         if (placement === 'Header') {
-            // Wait for header tabs to render
-            var interval = setInterval(function() {
-                var tabContainer = document.querySelector('.headerTabs');
-                if (tabContainer && !tabContainer.querySelector('.discover-header-tab')) {
-                    clearInterval(interval);
-                    var tabBtn = document.createElement('button');
-                    tabBtn.className = 'emby-tab-button focuscontainer-x emby-button discover-header-tab';
-                    tabBtn.innerHTML = '<div class="emby-button-foreground"><span class="emby-tab-button-inner">Discover</span></div>';
-                    tabBtn.addEventListener('click', function() {
-                        // Deactivate other tabs visually
-                        tabContainer.querySelectorAll('.emby-tab-button').forEach(t => t.classList.remove('emby-tab-button-active'));
-                        tabBtn.classList.add('emby-tab-button-active');
-                        window.location.hash = '#/home?tab=discover';
-                        mountNativeDiscoverView();
-                    });
-                    tabContainer.appendChild(tabBtn);
-                    window._discoverNavInjected = true;
-                }
-            }, 500);
+            // Header placement: do NOT inject a Discover tab — user controls header via their own JS inject
+            window._discoverNavInjected = true;
+            return;
         } else {
             // Sidebar Placement
             var sbInterval = setInterval(function() {
