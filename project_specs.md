@@ -1319,4 +1319,45 @@ Three C# compilation errors introduced in Phase 48 were resolved:
 ---
 
 **Current Version: v1.0.65**
+
+---
+
+## Phase 49 — Smaller Dismiss X Glyph + User Scoring Profile Dashboard (v1.0.66)
+
+### Feature 1: Smaller X Glyph in Dismiss Button
+- `.dc-dismiss-btn` circle stays 22×22px — only the ✕ character inside was made smaller
+- `font-size: 13px` → `font-size: 10px` in `discoverPage.js` CSS
+
+### Feature 2: User Scoring Profile Dashboard in Plugin Settings
+Added a **"User Scoring Profiles"** section below the Save button in `configPage.html`:
+- **"Load User Profiles" button** — fetches all user IDs via `GET /profile/all`, then loads each profile
+- **Per-user collapsible cards** (`<details>` elements) showing:
+  - Jellyfin display name + short user ID + total watched + last updated
+  - **Language Weights table**: raw weight → normalized → score contribution (×55)
+  - **Genre Weights table**: genre name → raw weight → normalized → score contribution (×2)
+  - **Top Directors / Top Actors tables** (full list, not truncated)
+  - **Watch History table**: TMDB ID, language, genre IDs, date (all entries)
+  - **Watchlist**: all TMDB IDs
+  - **Dismissed Movies**: all dismissed TMDB IDs
+  - **Dismissed Genre Penalties**: genre → penalty → score impact (×-3)
+  - **Scoring Formula**: live constants from the backend + formula breakdown
+- All styled dark (Jellyfin-consistent), scrollable tables, sticky headers
+- Button changes to "Refresh Profiles" after first load
+
+### Backend Enhancement: `/profile` Endpoint
+- Returns **full** `watchedTmdbIds`, `watchlistTmdbIds`, `recentWatches` (no more TakeLast/Take truncation)
+- Added: `dismissedTmdbIds`, `dismissedGenrePenalties` (with resolved genre names), `lastUpdated`, `scoringFormula` (all model constants)
+- `topDirectors` / `topActors` now return the full list (removed `.Take(10)` limit)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | `.dc-dismiss-btn` font-size 13px → 10px |
+| `Api/TmdbController.cs` | `/profile` endpoint: full data, new fields, scoring formula constants |
+| `Configuration/configPage.html` | Full user profile dashboard section with JS + styled tables |
+
+---
+
+**Current Version: v1.0.66**
 

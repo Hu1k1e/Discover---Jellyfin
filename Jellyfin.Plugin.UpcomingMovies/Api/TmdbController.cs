@@ -1102,27 +1102,55 @@ public class TmdbController : ControllerBase
 
         var directorsSorted = profile.DirectorWeights
             .OrderByDescending(kv => kv.Value)
-            .Take(10)
             .ToDictionary(kv => $"person_{kv.Key}", kv => Math.Round(kv.Value, 2));
 
         var actorsSorted = profile.ActorWeights
             .OrderByDescending(kv => kv.Value)
-            .Take(10)
             .ToDictionary(kv => $"person_{kv.Key}", kv => Math.Round(kv.Value, 2));
+
+        // Dismissed genre penalties with human-readable genre names
+        var dismissedGenresByName = profile.DismissedGenrePenalties
+            .OrderByDescending(kv => kv.Value)
+            .ToDictionary(
+                kv => UserProfileService.TmdbGenreIdToName.TryGetValue(kv.Key, out var dname)
+                      ? $"{dname} (id={kv.Key})" : $"genre_{kv.Key}",
+                kv => Math.Round(kv.Value, 2));
 
         return Ok(new
         {
             userId,
             totalWatched      = profile.TotalWatched,
-            watchedTmdbIds    = profile.WatchedTmdbIds.TakeLast(20).ToList(),
+            lastUpdated       = profile.LastUpdated.ToString("yyyy-MM-dd HH:mm:ss"),
+            watchedTmdbIds    = profile.WatchedTmdbIds,                    // full list
             languageWeights   = languagesSorted,
             genreWeights      = genresByName,
             topDirectors      = directorsSorted,
             topActors         = actorsSorted,
-            recentWatches     = profile.RecentWatches?.Take(10).Select(w => new {
-                w.TmdbId, w.Language, watchedAt = w.WatchedAt.ToString("yyyy-MM-dd")
+            recentWatches     = profile.RecentWatches?.Select(w => new {   // all watches
+                w.TmdbId, w.Language,
+                genres = w.GenreIds,
+                watchedAt = w.WatchedAt.ToString("yyyy-MM-dd HH:mm")
             }),
-            watchlistTmdbIds  = profile.WatchlistTmdbIds?.Take(20).ToList()
+            watchlistTmdbIds       = profile.WatchlistTmdbIds,             // full list
+            dismissedTmdbIds       = profile.DismissedTmdbIds,             // NEW
+            dismissedGenrePenalties = dismissedGenresByName,               // NEW
+            scoringFormula = new                                            // NEW — model constants
+            {
+                genreMultiplier          = 2.0,
+                languageMultiplier       = 55.0,
+                languageRecencyMax       = 20.0,
+                genreRecencyMax          = 8.0,
+                voteAverageMultiplier    = 7.0,
+                popularityCap            = 100,
+                popularityMultiplier     = 0.6,
+                recencyBonus2yr          = 10,
+                recencyPenalty10yr       = -6,
+                directorSourceBonus      = 25,
+                actorSourceBonus         = 20,
+                dismissPenaltyMultiplier = 3.0,
+                normalizeFormula         = "log10(1 + rawWeight) × 11.6",
+                tierAllocation           = "30 top-score + 20 secondary-genre + 10 wildcard"
+            }
         });
     }
 

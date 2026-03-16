@@ -129,8 +129,27 @@
                     </div>
 
                 </form>
+
             </div>
+
+            <!-- ── User Scoring Profiles ── -->
+            <div style="margin-top:3em; border-top:1px solid rgba(255,255,255,0.1); padding-top:2em; padding-bottom:2em;">
+                <h2>User Scoring Profiles</h2>
+                <p style="color:#aaa; font-size:0.9em; margin-bottom:1.2em;">
+                    View the recommendation scoring profile for each Jellyfin user.
+                    Profiles are built automatically from watch history and update in real-time.
+                </p>
+                <button type="button" id="btnLoadProfiles" is="emby-button" class="raised emby-button"
+                        style="margin-bottom:1.5em;">
+                    <span>Load User Profiles</span>
+                </button>
+                <div id="profilesContainer" style="display:none;">
+                    <div id="profilesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+                </div>
+            </div>
+
         </div>
+    </div>
 
         <script type="text/javascript">
             var UpcomingMoviesConfig = {
@@ -179,6 +198,168 @@
                     e.preventDefault();
                     return false;
                 });
+
+            // ── User Scoring Profile Dashboard ──────────────────────────────────────────
+            function pEsc(str) {
+                if (str == null) return '';
+                return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            }
+
+            function buildProfileTable(title, headers, rows) {
+                var h = '<h4 style="color:#ccc;margin:18px 0 6px;font-size:0.9em;font-weight:600;">' + pEsc(title) + '</h4>';
+                if (!rows || rows.length === 0) {
+                    return h + '<p style="color:#555;font-size:0.82em;margin:0 0 6px;">None</p>';
+                }
+                h += '<div style="max-height:260px;overflow-y:auto;border-radius:6px;border:1px solid rgba(255,255,255,0.06);">';
+                h += '<table style="width:100%;border-collapse:collapse;font-size:0.82em;">';
+                h += '<thead><tr>' + headers.map(function(hdr) {
+                    return '<th style="padding:7px 12px;text-align:left;color:#aaa;border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;top:0;background:#1a1c2c;white-space:nowrap;">' + pEsc(hdr) + '</th>';
+                }).join('') + '</tr></thead><tbody>';
+                rows.forEach(function(row, i) {
+                    h += '<tr style="background:' + (i % 2 === 0 ? 'rgba(255,255,255,0.025)' : 'transparent') + ';">';
+                    row.forEach(function(cell) {
+                        h += '<td style="padding:5px 12px;color:#ddd;border-bottom:1px solid rgba(255,255,255,0.04);">' + pEsc(String(cell == null ? '' : cell)) + '</td>';
+                    });
+                    h += '</tr>';
+                });
+                h += '</tbody></table></div>';
+                return h;
+            }
+
+            function buildProfileBody(profile) {
+                var html = '';
+
+                // Language Weights
+                var langRows = Object.entries(profile.languageWeights || {}).map(function(entry) {
+                    var code = entry[0], weight = entry[1];
+                    var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
+                    return [code, weight.toFixed(2), nw.toFixed(1), (nw * 55.0).toFixed(1) + ' pts'];
+                });
+                html += buildProfileTable('Language Weights', ['Language', 'Raw Weight', 'Normalized', 'Score Contribution (×55)'], langRows);
+
+                // Genre Weights
+                var genreRows = Object.entries(profile.genreWeights || {}).map(function(entry) {
+                    var name = entry[0], weight = entry[1];
+                    var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
+                    return [name, weight.toFixed(2), nw.toFixed(1), (nw * 2.0).toFixed(1) + ' pts'];
+                });
+                html += buildProfileTable('Genre Weights', ['Genre', 'Raw Weight', 'Normalized', 'Score Contribution (×2)'], genreRows);
+
+                // Top Directors
+                var dirRows = Object.entries(profile.topDirectors || {}).map(function(e) { return [e[0], e[1].toFixed(2)]; });
+                html += buildProfileTable('Top Directors', ['Person ID', 'Weight'], dirRows);
+
+                // Top Actors
+                var actorRows = Object.entries(profile.topActors || {}).map(function(e) { return [e[0], e[1].toFixed(2)]; });
+                html += buildProfileTable('Top Actors', ['Person ID', 'Weight'], actorRows);
+
+                // Watch History
+                var watchRows = (profile.recentWatches || []).map(function(w) {
+                    return [w.TmdbId || w.tmdbId || '', w.Language || w.language || '', (w.genres || []).join(', '), w.watchedAt || ''];
+                });
+                html += buildProfileTable('Watch History (' + watchRows.length + ' entries)', ['TMDB ID', 'Language', 'Genre IDs', 'Watched'], watchRows);
+
+                // Watchlist
+                var wlRows = (profile.watchlistTmdbIds || []).map(function(id) { return [id]; });
+                html += buildProfileTable('Watchlist (' + wlRows.length + ' items)', ['TMDB ID'], wlRows);
+
+                // Dismissed Movies
+                var dismissRows = (profile.dismissedTmdbIds || []).map(function(id) { return [id]; });
+                html += buildProfileTable('Dismissed Movies (' + dismissRows.length + ' items)', ['TMDB ID'], dismissRows);
+
+                // Dismissed Genre Penalties
+                var penaltyRows = Object.entries(profile.dismissedGenrePenalties || {}).map(function(entry) {
+                    var name = entry[0], penalty = entry[1];
+                    return [name, penalty.toFixed(2), (penalty * -3.0).toFixed(1) + ' pts'];
+                });
+                html += buildProfileTable('Dismissed Genre Penalties', ['Genre', 'Penalty Value', 'Score Impact (×-3)'], penaltyRows);
+
+                // Scoring Formula
+                var sf = profile.scoringFormula || {};
+                html += '<h4 style="color:#ccc;margin:18px 0 6px;font-size:0.9em;font-weight:600;">Scoring Formula</h4>';
+                html += '<pre style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:14px;color:#bbb;font-size:0.78em;overflow-x:auto;white-space:pre-wrap;margin:0;">'
+                    + 'Score = SourceBonus\n'
+                    + '        (recommendations seed: +30 | similar movies: +25\n'
+                    + '         genre discover: +15 | director match: +' + (sf.directorSourceBonus||25) + ' | actor match: +' + (sf.actorSourceBonus||20) + ' | always-on regional: +10)\n\n'
+                    + '      + \u03a3 genre: NW(genreWeight) \u00d7 ' + (sf.genreMultiplier||2.0) + ' + genreRecency (up to +' + (sf.genreRecencyMax||8) + ' pts)\n'
+                    + '      + NW(langWeight) \u00d7 ' + (sf.languageMultiplier||55.0) + ' + langRecency (up to +' + (sf.languageRecencyMax||20) + ' pts)\n'
+                    + '      - \u03a3 dismissedGenrePenalty \u00d7 ' + (sf.dismissPenaltyMultiplier||3.0) + '\n'
+                    + '      + voteAverage \u00d7 ' + (sf.voteAverageMultiplier||7.0) + '\n'
+                    + '      + min(popularity, ' + (sf.popularityCap||100) + ') \u00d7 ' + (sf.popularityMultiplier||0.6) + '\n'
+                    + '      + recencyBonus (\u22642yr: +' + (sf.recencyBonus2yr||10) + ' | >10yr: ' + (sf.recencyPenalty10yr||-6) + ')\n\n'
+                    + 'NW(w) = ' + (sf.normalizeFormula || 'log10(1 + w) \u00d7 11.6') + '\n'
+                    + 'Tiers: ' + (sf.tierAllocation || '30 top-score + 20 secondary-genre + 10 wildcard')
+                    + '</pre>';
+
+                return html;
+            }
+
+            document.getElementById('btnLoadProfiles').addEventListener('click', async function() {
+                var btn = document.getElementById('btnLoadProfiles');
+                var container = document.getElementById('profilesContainer');
+                var list = document.getElementById('profilesList');
+                btn.disabled = true;
+                btn.querySelector('span').textContent = 'Loading\u2026';
+                container.style.display = 'block';
+                list.innerHTML = '<p style="color:#aaa;font-size:0.9em;">Loading profiles\u2026</p>';
+
+                try {
+                    // 1. Get all user IDs
+                    var allRes = await fetch('/UpcomingMovies/tmdb/profile/all');
+                    var allData = await allRes.json();
+                    if (!allData.userIds || allData.userIds.length === 0) {
+                        list.innerHTML = '<p style="color:#888;">No user profiles found. Profiles are created when a user watches their first movie.</p>';
+                        btn.disabled = false;
+                        btn.querySelector('span').textContent = 'Load User Profiles';
+                        return;
+                    }
+                    list.innerHTML = '';
+
+                    // 2. Load each user profile
+                    for (var i = 0; i < allData.userIds.length; i++) {
+                        var uid = allData.userIds[i];
+                        var profileRes = await fetch('/UpcomingMovies/tmdb/profile?userId=' + encodeURIComponent(uid));
+                        var profile = profileRes.ok ? await profileRes.json() : null;
+                        if (!profile) continue;
+
+                        // Try to resolve Jellyfin display name
+                        var displayName = uid;
+                        try {
+                            var userInfo = await ApiClient.getUser(uid);
+                            if (userInfo && userInfo.Name) displayName = userInfo.Name;
+                        } catch(e) {}
+
+                        // Build collapsible card
+                        var card = document.createElement('details');
+                        card.style.cssText = 'background:#1a1c2c;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:4px;';
+
+                        var summary = document.createElement('summary');
+                        summary.style.cssText = 'padding:14px 18px;cursor:pointer;font-weight:600;font-size:1em;color:#fff;list-style:none;display:flex;justify-content:space-between;align-items:center;border-radius:8px;';
+                        summary.innerHTML =
+                            '<span>' + pEsc(displayName) + ' <span style="color:#555;font-weight:400;font-size:0.82em;">(' + uid.substring(0,8) + '…)</span></span>'
+                            + '<span style="color:#888;font-size:0.8em;font-weight:400;">Watched: '
+                            + (profile.totalWatched || 0)
+                            + ' &nbsp;|&nbsp; Updated: '
+                            + pEsc(profile.lastUpdated || '—')
+                            + '</span>';
+
+                        var body = document.createElement('div');
+                        body.style.cssText = 'padding:0 18px 18px;';
+                        body.innerHTML = buildProfileBody(profile);
+
+                        card.appendChild(summary);
+                        card.appendChild(body);
+                        list.appendChild(card);
+                    }
+
+                    btn.querySelector('span').textContent = 'Refresh Profiles';
+                } catch(err) {
+                    list.innerHTML = '<p style="color:#ef5350;">Error loading profiles: ' + pEsc(String(err)) + '</p>';
+                }
+                btn.disabled = false;
+            });
+            // ── End User Scoring Profile Dashboard ─────────────────────────────────────
+
         </script>
     </div>
 </body>

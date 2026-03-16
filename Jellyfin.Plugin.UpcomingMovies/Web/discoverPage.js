@@ -161,7 +161,7 @@
                 width: 22px; height: 22px;
                 background: rgba(20,20,20,0.85);
                 border: none; border-radius: 50%;
-                color: #fff; font-size: 13px; font-weight: 700; line-height: 22px;
+                color: #fff; font-size: 10px; font-weight: 700; line-height: 22px;
                 cursor: pointer; z-index: 4;
                 display: flex; align-items: center; justify-content: center;
                 opacity: 0; transition: opacity 0.15s, background 0.15s;
