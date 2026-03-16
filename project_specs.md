@@ -1412,4 +1412,28 @@ Rewrote `configPage.html` from scratch with correct div nesting:
 ---
 
 **Current Version: v1.0.68**
+
+---
+
+## Phase 49d — Remove Duplicate Profile Route (v1.0.69)
+
+### Root Cause
+`AmbiguousMatchException` on every `GET /UpcomingMovies/tmdb/profile` request — two methods had the same route:
+- **Old** `GetProfile` at line 834 → `[HttpGet("profile")]` + `[Authorize]`, returned truncated data (TakeLast/Take limits)
+- **New** `GetUserProfile` at line 1076 → `[HttpGet("profile")]` + `[AllowAnonymous]`, returns full data + scoring formula
+
+When Phase 49 added `GetUserProfile`, the old `GetProfile` was not removed, causing ASP.NET Core routing to throw an ambiguous match error for every profile fetch.
+
+### Fix
+Deleted the old `GetProfile` method (lines 831-864). The single remaining endpoint `GetUserProfile` now handles all profile requests with full data.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Deleted old `GetProfile` method — only `GetUserProfile` remains for `GET profile` route |
+
+---
+
+**Current Version: v1.0.69**
 

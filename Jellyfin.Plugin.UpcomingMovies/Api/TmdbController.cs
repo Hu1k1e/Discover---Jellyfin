@@ -828,40 +828,6 @@ public class TmdbController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Returns the current user's profile summary (for debugging / admin view).
-    /// </summary>
-    [HttpGet("profile")]
-    [Authorize]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetProfile([FromQuery] string userId = "")
-    {
-        if (string.IsNullOrWhiteSpace(userId))
-            return BadRequest(new { error = "userId is required" });
-
-        var svc2 = ProfileService;
-        if (svc2 is null)
-            return Ok(new { userId, totalWatched = 0, message = "Profile service not yet initialised" });
-
-        var profile = svc2.GetProfile(userId);
-        return Ok(new
-        {
-            userId = profile.UserId,
-            lastUpdated = profile.LastUpdated,
-            totalWatched = profile.TotalWatched,
-            topGenres = svc2.GetTopGenres(profile, 10)
-                .Select(id => new { id, name = UserProfileService.TmdbGenreIdToName.GetValueOrDefault(id, id.ToString()), weight = profile.GenreWeights.GetValueOrDefault(id) }),
-            topDirectors = svc2.GetTopDirectors(profile, 5)
-                .Select(id => new { id, weight = profile.DirectorWeights.GetValueOrDefault(id) }),
-            topActors = svc2.GetTopActors(profile, 5)
-                .Select(id => new { id, weight = profile.ActorWeights.GetValueOrDefault(id) }),
-            topLanguages = profile.LanguageWeights
-                .OrderByDescending(kv => kv.Value).Take(5)
-                .Select(kv => new { language = kv.Key, weight = kv.Value }),
-            recentWatches = profile.RecentWatches.Take(10)
-                .Select(w => new { w.TmdbId, watchedAt = w.WatchedAt, language = w.Language })
-        });
-    }
 
     /// <summary>
     /// Returns public-safe plugin configuration (no secrets exposed).
