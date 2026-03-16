@@ -1391,4 +1391,25 @@ Rewrote `configPage.html` from scratch with correct div nesting:
 ---
 
 **Current Version: v1.0.67**
+
+---
+
+## Phase 49c — Profile Dashboard Fetch Fix (v1.0.68)
+
+### Root Cause
+`fetch()` in Jellyfin's plugin config page does not include the Jellyfin auth token, so even `[AllowAnonymous]` profile endpoints could return non-ok responses. The `profileRes.ok` check then set `profile = null` and silently skipped every user with `continue`, leaving the list empty. Button text reached "Refresh Profiles" without any cards being rendered.
+
+### Fix
+- Replaced `fetch('/UpcomingMovies/tmdb/profile/...')` with `ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl(...), dataType: 'json' })` — this wraps requests with the Jellyfin session auth token automatically
+- Each profile fetch is now inside its own `try/catch`; failed profiles still render a card (collapsed) with a visible error message showing the userId and error text — no more silent skipping
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Configuration/configPage.html` | Switched to `ApiClient.ajax()`, per-user error display, cards always rendered |
+
+---
+
+**Current Version: v1.0.68**
 
