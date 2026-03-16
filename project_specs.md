@@ -1436,4 +1436,33 @@ Deleted the old `GetProfile` method (lines 831-864). The single remaining endpoi
 ---
 
 **Current Version: v1.0.69**
+
+---
+
+## Phase 49e — Bulk Sync User Profiles & Show All Users (v1.0.70)
+
+### Feature Implementations
+We found that the profile recommendations were only working for movies watched *after* the plugin was installed. Users with hundreds of historical watches (like Vj) had none of their watch history, watchlists, or language preferences imported. Furthermore, the Profile Dashboard only listed users who had triggered a recent watch event.
+
+1. **`SyncProfilesTask` (Scheduled Task)**
+   - Created a new background task under Dashboard -> Scheduled Tasks -> Upcoming Movies -> "Upcoming Movies - Sync User Profiles".
+   - This task loops through every user on the Jellyfin server, finds all movies they've marked as Played or Liked, and fetches the TMDB details/original languages.
+   - It then rebuilds their profile completely, applying the identical exponential decay calculations as live watches, but on their historical data.
+   - TMDB requests are cached per-task run to avoid hitting the API multiple times for the same movie across different users.
+
+2. **Show All Users in Dashboard**
+   - Modified `TmdbController.GetAllProfileUsers()` to inject `IUserManager`.
+   - The endpoint now queries Jellyfin for all active users instead of listing files in the `upcomingmovies_profiles` directory.
+   - This ensures every server user shows up in the config dropdown immediately so the admin can verify their profile.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | **[NEW]** Created `IScheduledTask` to bulk import the jellyfin historical playback records and watchlists into `UserProfileData` |
+| `Api/TmdbController.cs` | Injected `IUserManager` into constructor; updated `GetAllProfileUsers()` to return all Jellyfin user IDs so the UI drop-down populates completely |
+
+---
+
+**Current Version: v1.0.70**
 

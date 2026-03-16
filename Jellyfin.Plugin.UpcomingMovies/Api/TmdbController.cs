@@ -24,6 +24,7 @@ public class TmdbController : ControllerBase
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
     private readonly ILogger<TmdbController> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly MediaBrowser.Controller.Library.IUserManager _userManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TmdbController"/> class.
@@ -32,10 +33,12 @@ public class TmdbController : ControllerBase
     /// </summary>
     public TmdbController(
         ILogger<TmdbController> logger,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        MediaBrowser.Controller.Library.IUserManager userManager)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _userManager = userManager;
     }
 
     // Convenience accessor — returns Plugin.ProfileService, or null for safe handling below
@@ -1121,7 +1124,7 @@ public class TmdbController : ControllerBase
     }
 
     /// <summary>
-    /// Lists all Jellyfin user IDs that have a stored recommendation profile.
+    /// Lists all Jellyfin user IDs so the configuration page can show profiles for everyone.
     /// URL: GET /UpcomingMovies/tmdb/profile/all
     /// </summary>
     [HttpGet("profile/all")]
@@ -1129,11 +1132,7 @@ public class TmdbController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetAllProfileUsers()
     {
-        var svc = ProfileService;
-        if (svc is null)
-            return StatusCode(503, new { error = "ProfileService not initialised" });
-
-        var users = svc.GetAllProfileUserIds();
+        var users = _userManager.Users.Select(u => u.Id.ToString("N")).ToList();
         return Ok(new { count = users.Count, userIds = users });
     }
 
