@@ -514,7 +514,8 @@
         genres:       [],           // [] = all genres
         releaseTypes: [1,2,3,4,5], // all except TV
         dateFrom:     _todayStr(),
-        dateTo:       _oneYearStr()
+        dateTo:       _oneYearStr(),
+        showAll:      false
     };
     var _recFilters = {
         languages: [],  // [] = no restriction
@@ -545,7 +546,10 @@
                     var chk = filters.releaseTypes.indexOf(rt.val) !== -1 ? ' checked' : '';
                     return '<label><input type="checkbox" data-filter="rt" data-val="' + rt.val + '"' + chk + '> ' + rt.label + '</label>';
                 }).join('') + '</div>';
-            dateHtml = '<div class="df-section-label">Release Date Range</div>'
+            dateHtml = '<div class="df-section-label">Options &amp; Release Date Range</div>'
+                + '<div class="df-check-row" style="margin-bottom:8px;">'
+                + '<label><input type="checkbox" data-filter="showAll" ' + (filters.showAll ? 'checked' : '') + '> Show Everything (include obscure movies)</label>'
+                + '</div>'
                 + '<div class="df-date-row">'
                 + '<label>From <input type="date" class="df-date-input" data-filter="dateFrom" value="' + filters.dateFrom + '"></label>'
                 + '<label>To &nbsp; <input type="date" class="df-date-input" data-filter="dateTo" value="' + filters.dateTo + '"></label>'
@@ -704,6 +708,7 @@
             if (filters.releaseTypes && filters.releaseTypes.length) params.push('releaseTypes=' + encodeURIComponent(filters.releaseTypes.join(',')));
             if (filters.dateFrom)  params.push('dateFrom=' + encodeURIComponent(filters.dateFrom));
             if (filters.dateTo)    params.push('dateTo='   + encodeURIComponent(filters.dateTo));
+            if (filters.showAll)   params.push('showAll=true');
         }
         var qs = params.length ? '?' + params.join('&') : '';
         var res = await fetch('/UpcomingMovies/tmdb/upcoming' + qs, {
@@ -1568,6 +1573,10 @@
                 else             { if (idx !== -1) _upcFilters.releaseTypes.splice(idx, 1); }
             });
         });
+        // Show All checkbox
+        containerDiv.querySelectorAll('input[data-filter="showAll"]').forEach(function(cb) {
+            cb.addEventListener('change', function() { _upcFilters.showAll = cb.checked; });
+        });
         // Date inputs
         containerDiv.querySelectorAll('input[data-filter="dateFrom"]').forEach(function(el) {
             el.addEventListener('change', function() { _upcFilters.dateFrom = el.value; });
@@ -1597,6 +1606,7 @@
                     _upcFilters.releaseTypes = [1,2,3,4,5];
                     _upcFilters.dateFrom     = _todayStr();
                     _upcFilters.dateTo       = _oneYearStr();
+                    _upcFilters.showAll      = false;
                 } else {
                     _recFilters.languages = [];
                     _recFilters.genres    = [];
@@ -1616,6 +1626,9 @@
                     panel.querySelectorAll('input[data-filter="rt"]').forEach(function(cb) {
                         cb.checked = _upcFilters.releaseTypes.indexOf(parseInt(cb.dataset.val, 10)) !== -1;
                     });
+                    // Restore showAll checkbox
+                    var showAllCb = panel.querySelector('input[data-filter="showAll"]');
+                    if (showAllCb) showAllCb.checked = _upcFilters.showAll;
                     // Restore date inputs
                     panel.querySelectorAll('input[data-filter="dateFrom"]').forEach(function(el) { el.value = _upcFilters.dateFrom; });
                     panel.querySelectorAll('input[data-filter="dateTo"]').forEach(function(el) { el.value = _upcFilters.dateTo; });

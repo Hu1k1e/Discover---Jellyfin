@@ -57,7 +57,8 @@ public class TmdbController : ControllerBase
         [FromQuery] string genres       = "",
         [FromQuery] string releaseTypes = "1,2,3,4,5",
         [FromQuery] string dateFrom     = "",
-        [FromQuery] string dateTo       = "")
+        [FromQuery] string dateTo       = "",
+        [FromQuery] bool   showAll      = false)
     {
         try
         {
@@ -84,6 +85,9 @@ public class TmdbController : ControllerBase
             var genreParam = string.IsNullOrWhiteSpace(genres) ? string.Empty
                 : "&with_genres=" + Uri.EscapeDataString(genres.Replace(",", "|"));
 
+            // Popularity filter
+            var popFilter = showAll ? string.Empty : "&popularity.gte=10";
+
             // Multiple languages → parallel requests, merged + deduplicated
             var langCodes = (languages ?? "en").Split(',', StringSplitOptions.RemoveEmptyEntries)
                                                 .Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToList();
@@ -103,7 +107,8 @@ public class TmdbController : ControllerBase
                             + $"&sort_by=primary_release_date.asc"
                             + $"&with_release_type={rtParam}"
                             + $"&with_original_language={lang}"
-                            + genreParam;
+                            + genreParam
+                            + popFilter;
 
                     var response = await client.GetAsync(url).ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode) return;

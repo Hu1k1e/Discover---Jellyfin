@@ -1599,5 +1599,25 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.77**
+## Phase 53 — Upcoming Movies Popularity Filter (v1.0.78)
+
+### Root Cause / Requirement
+- While ordering the upcoming movies chronologically (Phase 52) correctly arranged the dates, doing so caused TMDB to return a high volume of obscure, low-quality, or seemingly random indie films.
+- The requirement was to keep the chronological sorting but pre-filter the TMDB query to only include "popular" movies by default, while providing a UI toggle to optionally "Show Everything".
+
+### Fix
+- **Backend (`TmdbController.cs`)**: Added a `showAll` boolean query parameter to `GetUpcoming`. If false (default), the API appends `&popularity.gte=10` to the TMDB fetch URL to filter out obscure titles.
+- **Frontend (`discoverPage.js`)**: Added a 'Show Everything (include obscure movies)' checkbox in the Upcoming filter panel. Wired this to update `_upcFilters.showAll` and pass it to the backend via query string. Also implemented the logic to restore its state when applying/resetting filters.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Added `showAll` param and popularity filter append |
+| `Web/discoverPage.js` | Added checkbox UI and filter state wiring |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.78.0 |
+
+---
+
+**Current Version: v1.0.78**
 
