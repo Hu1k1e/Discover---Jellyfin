@@ -1299,4 +1299,24 @@ A strong language match now contributes up to 50 points to a movie's score (up f
 | `Model/UserProfileData.cs` | Added `DismissedTmdbIds`, `DismissedGenrePenalties` |
 | `Api/TmdbController.cs` | Adult hard-block in `AddCandidate`; language weight 55.0/20.0; dismissed block in `AddCandidate`; dismissed genre penalty in scoring; new `/dismiss` and `/credits` endpoints |
 | `Web/discoverPage.js` | Dismiss X button CSS + HTML; rating badge moved top-left; dismiss event handler + API call; actor images in popup; `genreIds` passed via `buildCard` |
+
+---
+
+## Phase 48b — Build Fix (v1.0.65)
+
+Three C# compilation errors introduced in Phase 48 were resolved:
+
+1. **Variable shadowing in `DismissMovie` endpoint** — `foreach (var g ...)` and `foreach (var gid ...)` in adjacent `if`/`else if` branches conflicted. Renamed to `gEl1`/`gId1`, `gEl2`/`gId2`, and `dismissGid` for the penalty apply loop.
+2. **Same shadowing in scoring engine** — `var g`/`var pgid` in dismissed genre penalty loop conflicted with outer genre scoring loop's `var g`/`var gid`. Renamed to `penG`/`penGid`.
+3. **Type mismatch in `/credits` endpoint** — C# cannot unify `List<anonymous>` with `List<dynamic>` in a ternary. Replaced ternary with explicit `foreach` into `List<object>`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Renamed penalty loop variables; replaced credits ternary with foreach |
+
+---
+
+**Current Version: v1.0.65**
 
