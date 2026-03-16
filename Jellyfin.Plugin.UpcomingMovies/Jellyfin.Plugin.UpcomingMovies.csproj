@@ -7,9 +7,10 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
-    <Version>1.0.6.0</Version>
-    <AssemblyVersion>1.0.6.0</AssemblyVersion>
-    <FileVersion>1.0.6.0</FileVersion>
+    <NoWarn>CS1591</NoWarn>
+    <Version>1.0.74.0</Version>
+    <AssemblyVersion>1.0.74.0</AssemblyVersion>
+    <FileVersion>1.0.74.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

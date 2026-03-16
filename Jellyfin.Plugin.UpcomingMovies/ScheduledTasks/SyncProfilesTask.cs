@@ -25,7 +25,6 @@ public class SyncProfilesTask : IScheduledTask
     private readonly IUserManager _userManager;
     private readonly ILibraryManager _libraryManager;
     private readonly IUserDataManager _userDataManager;
-    private readonly UserProfileService _profileService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SyncProfilesTask> _logger;
 
@@ -43,14 +42,12 @@ public class SyncProfilesTask : IScheduledTask
         IUserManager userManager,
         ILibraryManager libraryManager,
         IUserDataManager userDataManager,
-        UserProfileService profileService,
         IHttpClientFactory httpClientFactory,
         ILogger<SyncProfilesTask> logger)
     {
         _userManager = userManager;
         _libraryManager = libraryManager;
         _userDataManager = userDataManager;
-        _profileService = profileService;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
     }
@@ -106,7 +103,7 @@ public class SyncProfilesTask : IScheduledTask
                     Liked = liked,
                     // Note: UserData doesn't always have a strict 'date watched' that's easy to pull without IUserDataRepository.
                     // We'll use LastPlayedDate if available
-                    Date = userData.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1)
+                    Date = userData?.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1)
                 });
             }
 
@@ -140,7 +137,7 @@ public class SyncProfilesTask : IScheduledTask
                 }
             }
 
-            _profileService.SaveProfile(profile);
+            Plugin.ProfileService?.SaveProfile(profile);
             
             userIndex++;
             progress.Report((double)userIndex / users.Count * 100);

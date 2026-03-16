@@ -1519,5 +1519,27 @@ The `v1.0.72` build failed because `IncludeItemTypes` on `InternalItemsQuery` ex
 
 ---
 
-**Current Version: v1.0.73**
+## Phase 49i — Build Hotfix 4 for Plugin Malfunction (v1.0.74)
+
+### Root Cause
+The `v1.0.73` build succeeded, but the plugin "Malfunctioned" because `SyncProfilesTask` was attempting to inject `UserProfileService` via the constructor. `UserProfileService` is not registered in Jellyfin's DI container—it is manually instantiated and stored statically in `Plugin.cs`. This caused an exception during plugin initialization, crashing the entire plugin. 
+
+Additionally, the build logs were spammed with `CS1591` (Missing XML comment) warnings which made reading actual errors difficult, and the `.csproj` version `1.0.6.0` was not bumped.
+
+### Fix
+- Replaced the DI injected `_profileService` in `SyncProfilesTask` constructor with the static accessor `Plugin.ProfileService?.SaveProfile(profile)`.
+- Fixed line 109 `CS8602` warning to check `userData?.LastPlayedDate`.
+- Suppressed `CS1591` warnings globally via `.csproj` `<NoWarn>CS1591</NoWarn>`.
+- Bumped assembly version to `1.0.74.0`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Removed DI for `UserProfileService` and fixed `userData` null check |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Added `<NoWarn>`, bumped Version/AssemblyVersion to 1.0.74.0 |
+
+---
+
+**Current Version: v1.0.74**
 
