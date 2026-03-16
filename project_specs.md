@@ -1464,5 +1464,27 @@ We found that the profile recommendations were only working for movies watched *
 
 ---
 
-**Current Version: v1.0.70**
+## Phase 49f — Build Hotfix for SyncProfilesTask (v1.0.71)
+
+### Root Cause
+The GitHub Actions build failed on `v1.0.70` due to three syntax errors in the new `SyncProfilesTask.cs`:
+- `CS0246`: Missing `using MediaBrowser.Controller.Dto;` required for `InternalItemsQuery`.
+- `CS1061`: Used `user.Name` instead of `user.Username`.
+- `CS8602`: Dereference of possibly null `movie.ProviderIds` at line 91.
+
+### Fix
+Applied the fixes directly to `SyncProfilesTask.cs`:
+1. Added `using MediaBrowser.Controller.Dto;`
+2. Changed `user.Name` to `user.Username` on lines 75 and 137.
+3. Added null check: `movie.ProviderIds == null || !movie.ProviderIds.TryGetValue(...)`
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Fixed compile errors |
+
+---
+
+**Current Version: v1.0.71**
 

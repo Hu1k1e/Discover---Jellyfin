@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.UpcomingMovies.Model;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Tasks;
@@ -72,7 +73,7 @@ public class SyncProfilesTask : IScheduledTask
             cancellationToken.ThrowIfCancellationRequested();
 
             var userIdStr = user.Id.ToString("N");
-            _logger.LogInformation("[UpcomingMovies] Processing user {UserName} ({UserId})", user.Name, userIdStr);
+            _logger.LogInformation("[UpcomingMovies] Processing user {UserName} ({UserId})", user.Username, userIdStr);
 
             // Recreate a fresh profile
             var profile = new UserProfileData { UserId = userIdStr };
@@ -93,7 +94,7 @@ public class SyncProfilesTask : IScheduledTask
 
                 if (!played && !liked) continue;
 
-                if (!movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) || !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
+                if (movie.ProviderIds == null || !movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) || !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
                     continue;
 
                 userMovies.Add(new HistoricalEvent
@@ -134,7 +135,7 @@ public class SyncProfilesTask : IScheduledTask
                 movieIndex++;
                 if (movieIndex % 25 == 0)
                 {
-                    _logger.LogInformation("[UpcomingMovies] User {UserName}: Processed {MIndex}/{Total} movies...", user.Name, movieIndex, userMovies.Count);
+                    _logger.LogInformation("[UpcomingMovies] User {UserName}: Processed {MIndex}/{Total} movies...", user.Username, movieIndex, userMovies.Count);
                 }
             }
 
