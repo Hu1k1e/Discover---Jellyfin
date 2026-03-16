@@ -63,7 +63,7 @@ public class SyncProfilesTask : IScheduledTask
         var users = _userManager.Users.ToList();
         var allMovies = _libraryManager.GetItemList(new InternalItemsQuery
         {
-            IncludeItemTypes = new[] { "Movie" }
+            IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Movie }
         }).OfType<Movie>().ToList();
 
         _logger.LogInformation("[UpcomingMovies] Found {UserCount} users and {MovieCount} total movies.", users.Count, allMovies.Count);
@@ -90,8 +90,8 @@ public class SyncProfilesTask : IScheduledTask
             foreach (var movie in allMovies)
             {
                 var userData = _userDataManager.GetUserData(user, movie);
-                bool played = userData.Played;
-                bool liked = userData.Likes == true;
+                bool played = userData?.Played == true;
+                bool liked = userData?.Likes == true;
 
                 if (!played && !liked) continue;
 

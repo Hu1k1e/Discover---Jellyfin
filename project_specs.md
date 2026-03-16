@@ -1502,5 +1502,22 @@ Added `using MediaBrowser.Controller.Entities;` to `SyncProfilesTask.cs`.
 
 ---
 
-**Current Version: v1.0.72**
+## Phase 49h — Build Hotfix 3 for SyncProfilesTask (v1.0.73)
+
+### Root Cause
+The `v1.0.72` build failed because `IncludeItemTypes` on `InternalItemsQuery` expects an array of `Jellyfin.Data.Enums.BaseItemKind` instead of an array of strings like `"Movie"`. Additionally, there was a null reference warning for `userData.Played`.
+
+### Fix
+- Changed `"Movie"` to `Jellyfin.Data.Enums.BaseItemKind.Movie`.
+- Added null-conditional operators: `userData?.Played == true` and `userData?.Likes == true`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Fixed `IncludeItemTypes` assignment type and warning |
+
+---
+
+**Current Version: v1.0.73**
 
