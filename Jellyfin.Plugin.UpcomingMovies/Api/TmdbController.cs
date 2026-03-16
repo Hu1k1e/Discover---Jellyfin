@@ -100,7 +100,7 @@ public class TmdbController : ControllerBase
                     var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}"
                             + $"&language=en-US&page={page}"
                             + $"&primary_release_date.gte={fromStr}&primary_release_date.lte={toStr}"
-                            + $"&sort_by=popularity.desc"
+                            + $"&sort_by=primary_release_date.asc"
                             + $"&with_release_type={rtParam}"
                             + $"&with_original_language={lang}"
                             + genreParam;
@@ -124,10 +124,16 @@ public class TmdbController : ControllerBase
 
             await Task.WhenAll(langFetchTasks).ConfigureAwait(false);
 
-            // Sort merged results by popularity descending
+            // Sort merged results by release date ascending
             var sorted = allMovies
-                .Select(m => (m, pop: m.TryGetProperty("popularity", out var p) && p.TryGetDouble(out var pd) ? pd : 0.0))
-                .OrderByDescending(x => x.pop)
+                .Select(m => 
+                {
+                    DateTime date = DateTime.MaxValue;
+                    if (m.TryGetProperty("release_date", out var dProp) && DateTime.TryParse(dProp.GetString(), out var parsed))
+                        date = parsed;
+                    return (m, date);
+                })
+                .OrderBy(x => x.date)
                 .Select(x => x.m)
                 .ToList();
 

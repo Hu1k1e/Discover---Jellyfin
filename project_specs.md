@@ -1580,5 +1580,24 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.76**
+## Phase 52 — Upcoming Movies Sorting (v1.0.77)
+
+### Root Cause / Requirement
+- The "Upcoming Movies" section results were being sorted by TMDB popularity (`popularity.desc`), causing the release dates to be completely scrambled out of order.
+- The user requested the Upcoming Movies section be ordered chronologically from "releasing next" to "releasing later".
+
+### Fix
+- Modified the TMDB API call in `GetUpcoming` to use `sort_by=primary_release_date.asc`.
+- Modified the local C# merging and sorting logic to sort the final list by parsed `release_date` ascending instead of the popularity score.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Changed query sort parameters and local list ordering |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.77.0 |
+
+---
+
+**Current Version: v1.0.77**
 
