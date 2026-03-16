@@ -1239,6 +1239,24 @@ Reverted to `repeat(auto-fit, minmax(150px, 1fr))`. With 15+ cards, `1fr` ≈ 16
 | `Api/TmdbController.cs` | Source 11 always-on regional discover; included in `Task.WhenAll` |
 | `Web/discoverPage.js` | `_bufferedRecIds` set; `ensureRecommendationsBuffer` cross-page dedup; buffer seed fix |
 
+---
 
+## Phase 47 — Regional Weights Boost & Pagination Dedup Fix (v1.0.63)
 
+### Bug 1: Duplicates still appearing on Discover More
+**Root cause:** The backend `GetRecommendations(page)` fetches a completely fresh set of ~60 candidates on every page call (since TMDB sources rotate pages). However, the backend pagination logic was doing `diversified.Skip((page-1) * 20).Take(20)`. This meant `page=1` returned the top 20, `page=2` skipped the top 20 of its fresh pool, `page=3` skipped the top 40, and `page=4`+ (where `skip >= pool.Count`) just kept returning the exact same bottom 20 items of whatever pool was generated.
+**Fix:** Removed the `Skip()`. Since every `page=N` fetches a fresh TMDB pool (handling the variety natively), the backend now simply returns `diversified.Take(20)` — which guarantees the frontend gets the absolute best 20 selections of the newly generated pool, eliminating the repeated "bottom-20" duplicates.
+
+### Feature: Heavily Boost Watched Languages
+**Goal:** If a user watches non-English movies (e.g., Malayalam), they should see a dominant amount of them in the recommendations without it being 100% exclusive.
+**Fix:** Increased the scoring weight multipliers in `TmdbController.cs`:
+- General Language Weight: `6.0` → `35.0`
+- Recent Language Weight: `5.0` → `15.0`
+A strong language match now contributes up to 50 points to a movie's score (up from 11 points), reliably shifting regional films into the Tier 1 (Top 30) slots of the candidate pool, while retaining overall quality/genre sorting.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Boosted language multipliers to 35.0 / 15.0; Removed `Skip()` from pagination to fix page 4+ duplicates. |
 

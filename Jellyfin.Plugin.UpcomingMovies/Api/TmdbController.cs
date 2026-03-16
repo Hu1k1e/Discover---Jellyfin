@@ -614,14 +614,14 @@ public class TmdbController : ControllerBase
                     }
                 }
 
-                // Language affinity — log-normalised × 6.0
-                // Recency bonus: up to +5 pts if the user has watched this language very recently
+                // Language affinity — dramatically boosted log-normalised × 35.0
+                // Recency bonus: up to +15 pts if the user has watched this language very recently
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
-                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 6.0;
+                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 35.0; // Boosted from 6.0
                     if (recentLang.TryGetValue(lang, out var lr))
-                        score += (lr / maxLangRecency) * 5.0;
+                        score += (lr / maxLangRecency) * 15.0; // Boosted from 5.0
                 }
 
                 // Vote average (0–10 → 0–70 pts) — core quality signal
@@ -758,15 +758,13 @@ public class TmdbController : ControllerBase
                 if (!added) break; // no more candidates at all
             }
 
-            // ── Output: Paginate 20 items per backend page from the diversified pool ───────────
+            // ── Output: Top 20 items per backend page from the fresh diversified pool ───────────
             // Each call to GetRecommendations(page=N) fetches fresh TMDB data and produces
-            // a freshly scored pool of ~80 diversified candidates. We return 20 per page so
-            // the frontend can call page=1,2,3... and reliably get new cards each time.
+            // a freshly scored pool of ~60 diversified candidates. We return the Top 20 best
+            // matches from THIS fresh pool. We DO NOT skip items, because page=N inherently
+            // generated a completely different set of source candidates from TMDB.
             const int pageSize = 20;
-            var skip = (page - 1) * pageSize;
-            // If skip >= pool size, just return what we have from the end
-            if (skip >= diversified.Count) skip = Math.Max(0, diversified.Count - pageSize);
-            var pageResults = diversified.Skip(skip).Take(pageSize).ToList();
+            var pageResults = diversified.Take(pageSize).ToList();
             var totalPages  = Math.Max(1, (int)Math.Ceiling(diversified.Count / (double)pageSize));
             // Surface the real total so frontend knows when to stop
             // For practical purposes, treat as 50 pages (sources vary per page call so we never truly run out)
