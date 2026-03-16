@@ -1486,5 +1486,21 @@ Applied the fixes directly to `SyncProfilesTask.cs`:
 
 ---
 
-**Current Version: v1.0.71**
+## Phase 49g — Build Hotfix 2 for SyncProfilesTask (v1.0.72)
+
+### Root Cause
+The `v1.0.71` build failed because `InternalItemsQuery` is in the `MediaBrowser.Controller.Entities` namespace in Jellyfin 10.11, not `MediaBrowser.Controller.Dto`. The previous hotfix added the wrong namespace.
+
+### Fix
+Added `using MediaBrowser.Controller.Entities;` to `SyncProfilesTask.cs`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Added correct namespace for `InternalItemsQuery` |
+
+---
+
+**Current Version: v1.0.72**
 
