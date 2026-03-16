@@ -12,6 +12,7 @@
 
         <div data-role="content">
             <div class="content-primary">
+
                 <form id="UpcomingMoviesConfigForm">
 
                     <h2>API Settings</h2>
@@ -44,7 +45,7 @@
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="JellyseerrApiKey">Jellyseerr API Key</label>
                         <input id="JellyseerrApiKey" name="JellyseerrApiKey" type="password" is="emby-input" autocomplete="off" />
-                        <div class="fieldDescription">Found in Jellyseerr → Settings → General → API Key.</div>
+                        <div class="fieldDescription">Found in Jellyseerr &rarr; Settings &rarr; General &rarr; API Key.</div>
                     </div>
 
                     <h2>Stream Settings</h2>
@@ -54,7 +55,7 @@
                         <input id="StreamBaseUrl" name="StreamBaseUrl" type="url" is="emby-input"
                                placeholder="https://stream.hulksmash.ca/movie/" />
                         <div class="fieldDescription">
-                            The TMDB movie ID will be appended to this URL when "Stream Directly" is clicked.
+                            The TMDB movie ID will be appended to this URL when &ldquo;Stream Directly&rdquo; is clicked.
                             Example: <code>https://stream.hulksmash.ca/movie/</code>
                         </div>
                     </div>
@@ -130,26 +131,24 @@
 
                 </form>
 
-            </div>
-
-            <!-- ── User Scoring Profiles ── -->
-            <div style="margin-top:3em; border-top:1px solid rgba(255,255,255,0.1); padding-top:2em; padding-bottom:2em;">
-                <h2>User Scoring Profiles</h2>
-                <p style="color:#aaa; font-size:0.9em; margin-bottom:1.2em;">
-                    View the recommendation scoring profile for each Jellyfin user.
-                    Profiles are built automatically from watch history and update in real-time.
-                </p>
-                <button type="button" id="btnLoadProfiles" is="emby-button" class="raised emby-button"
-                        style="margin-bottom:1.5em;">
-                    <span>Load User Profiles</span>
-                </button>
-                <div id="profilesContainer" style="display:none;">
-                    <div id="profilesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+                <!-- ── User Scoring Profiles ── -->
+                <div style="margin-top:3em; border-top:1px solid rgba(255,255,255,0.1); padding-top:2em; padding-bottom:2em;">
+                    <h2>User Scoring Profiles</h2>
+                    <p style="color:#aaa; font-size:0.9em; margin-bottom:1.2em;">
+                        View the recommendation scoring profile for each Jellyfin user.
+                        Profiles are built automatically from watch history and update in real-time.
+                    </p>
+                    <button type="button" id="btnLoadProfiles" is="emby-button" class="raised emby-button"
+                            style="margin-bottom:1.5em;">
+                        <span>Load User Profiles</span>
+                    </button>
+                    <div id="profilesContainer" style="display:none;">
+                        <div id="profilesList" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
                 </div>
-            </div>
 
-        </div>
-    </div>
+            </div><!-- /.content-primary -->
+        </div><!-- /[data-role=content] -->
 
         <script type="text/javascript">
             var UpcomingMoviesConfig = {
@@ -235,7 +234,7 @@
                     var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
                     return [code, weight.toFixed(2), nw.toFixed(1), (nw * 55.0).toFixed(1) + ' pts'];
                 });
-                html += buildProfileTable('Language Weights', ['Language', 'Raw Weight', 'Normalized', 'Score Contribution (×55)'], langRows);
+                html += buildProfileTable('Language Weights', ['Language', 'Raw Weight', 'Normalized', 'Score Contribution (\u00d755)'], langRows);
 
                 // Genre Weights
                 var genreRows = Object.entries(profile.genreWeights || {}).map(function(entry) {
@@ -243,7 +242,7 @@
                     var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
                     return [name, weight.toFixed(2), nw.toFixed(1), (nw * 2.0).toFixed(1) + ' pts'];
                 });
-                html += buildProfileTable('Genre Weights', ['Genre', 'Raw Weight', 'Normalized', 'Score Contribution (×2)'], genreRows);
+                html += buildProfileTable('Genre Weights', ['Genre', 'Raw Weight', 'Normalized', 'Score Contribution (\u00d72)'], genreRows);
 
                 // Top Directors
                 var dirRows = Object.entries(profile.topDirectors || {}).map(function(e) { return [e[0], e[1].toFixed(2)]; });
@@ -272,17 +271,17 @@
                     var name = entry[0], penalty = entry[1];
                     return [name, penalty.toFixed(2), (penalty * -3.0).toFixed(1) + ' pts'];
                 });
-                html += buildProfileTable('Dismissed Genre Penalties', ['Genre', 'Penalty Value', 'Score Impact (×-3)'], penaltyRows);
+                html += buildProfileTable('Dismissed Genre Penalties', ['Genre', 'Penalty Value', 'Score Impact (\u00d7-3)'], penaltyRows);
 
                 // Scoring Formula
                 var sf = profile.scoringFormula || {};
                 html += '<h4 style="color:#ccc;margin:18px 0 6px;font-size:0.9em;font-weight:600;">Scoring Formula</h4>';
                 html += '<pre style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:14px;color:#bbb;font-size:0.78em;overflow-x:auto;white-space:pre-wrap;margin:0;">'
                     + 'Score = SourceBonus\n'
-                    + '        (recommendations seed: +30 | similar movies: +25\n'
-                    + '         genre discover: +15 | director match: +' + (sf.directorSourceBonus||25) + ' | actor match: +' + (sf.actorSourceBonus||20) + ' | always-on regional: +10)\n\n'
-                    + '      + \u03a3 genre: NW(genreWeight) \u00d7 ' + (sf.genreMultiplier||2.0) + ' + genreRecency (up to +' + (sf.genreRecencyMax||8) + ' pts)\n'
-                    + '      + NW(langWeight) \u00d7 ' + (sf.languageMultiplier||55.0) + ' + langRecency (up to +' + (sf.languageRecencyMax||20) + ' pts)\n'
+                    + '        (seed: +30 | similar: +25 | genre-discover: +15\n'
+                    + '         director: +' + (sf.directorSourceBonus||25) + ' | actor: +' + (sf.actorSourceBonus||20) + ' | regional-always-on: +10)\n\n'
+                    + '      + \u03a3 genre: NW(genreWeight) \u00d7 ' + (sf.genreMultiplier||2.0) + '  +  genreRecency up to +' + (sf.genreRecencyMax||8) + ' pts\n'
+                    + '      + NW(langWeight) \u00d7 ' + (sf.languageMultiplier||55.0) + '  +  langRecency up to +' + (sf.languageRecencyMax||20) + ' pts\n'
                     + '      - \u03a3 dismissedGenrePenalty \u00d7 ' + (sf.dismissPenaltyMultiplier||3.0) + '\n'
                     + '      + voteAverage \u00d7 ' + (sf.voteAverageMultiplier||7.0) + '\n'
                     + '      + min(popularity, ' + (sf.popularityCap||100) + ') \u00d7 ' + (sf.popularityMultiplier||0.6) + '\n'
@@ -304,43 +303,39 @@
                 list.innerHTML = '<p style="color:#aaa;font-size:0.9em;">Loading profiles\u2026</p>';
 
                 try {
-                    // 1. Get all user IDs
                     var allRes = await fetch('/UpcomingMovies/tmdb/profile/all');
                     var allData = await allRes.json();
                     if (!allData.userIds || allData.userIds.length === 0) {
-                        list.innerHTML = '<p style="color:#888;">No user profiles found. Profiles are created when a user watches their first movie.</p>';
+                        list.innerHTML = '<p style="color:#888;">No user profiles found. Profiles are created automatically when a user watches their first movie.</p>';
                         btn.disabled = false;
                         btn.querySelector('span').textContent = 'Load User Profiles';
                         return;
                     }
                     list.innerHTML = '';
 
-                    // 2. Load each user profile
                     for (var i = 0; i < allData.userIds.length; i++) {
                         var uid = allData.userIds[i];
                         var profileRes = await fetch('/UpcomingMovies/tmdb/profile?userId=' + encodeURIComponent(uid));
                         var profile = profileRes.ok ? await profileRes.json() : null;
                         if (!profile) continue;
 
-                        // Try to resolve Jellyfin display name
                         var displayName = uid;
                         try {
                             var userInfo = await ApiClient.getUser(uid);
                             if (userInfo && userInfo.Name) displayName = userInfo.Name;
                         } catch(e) {}
 
-                        // Build collapsible card
                         var card = document.createElement('details');
                         card.style.cssText = 'background:#1a1c2c;border-radius:8px;border:1px solid rgba(255,255,255,0.08);margin-bottom:4px;';
 
                         var summary = document.createElement('summary');
                         summary.style.cssText = 'padding:14px 18px;cursor:pointer;font-weight:600;font-size:1em;color:#fff;list-style:none;display:flex;justify-content:space-between;align-items:center;border-radius:8px;';
                         summary.innerHTML =
-                            '<span>' + pEsc(displayName) + ' <span style="color:#555;font-weight:400;font-size:0.82em;">(' + uid.substring(0,8) + '…)</span></span>'
+                            '<span>' + pEsc(displayName) + ' <span style="color:#555;font-weight:400;font-size:0.82em;">(' + uid.substring(0,8) + '\u2026)</span></span>'
                             + '<span style="color:#888;font-size:0.8em;font-weight:400;">Watched: '
                             + (profile.totalWatched || 0)
                             + ' &nbsp;|&nbsp; Updated: '
-                            + pEsc(profile.lastUpdated || '—')
+                            + pEsc(profile.lastUpdated || '\u2014')
                             + '</span>';
 
                         var body = document.createElement('div');
@@ -361,6 +356,6 @@
             // ── End User Scoring Profile Dashboard ─────────────────────────────────────
 
         </script>
-    </div>
+    </div><!-- /#UpcomingMoviesConfigPage -->
 </body>
 </html>

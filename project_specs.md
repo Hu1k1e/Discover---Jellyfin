@@ -1360,4 +1360,35 @@ Added a **"User Scoring Profiles"** section below the Save button in `configPage
 ---
 
 **Current Version: v1.0.66**
+
+---
+
+## Phase 49b — Config Page Structure Fix (v1.0.67)
+
+### Root Cause
+Phase 49's edit of `configPage.html` accidentally closed the `#UpcomingMoviesConfigPage` div **before** the `<script>` tag. In Jellyfin's plugin config page framework, any script outside the page div is **never executed** — so the `pageshow` listener never fired (settings always appeared blank), the `submit` listener never fired (Save did nothing), and the `btnLoadProfiles` click handler was never attached.
+
+### Fix
+Rewrote `configPage.html` from scratch with correct div nesting:
+```
+#UpcomingMoviesConfigPage
+  [data-role="content"]
+    .content-primary
+      <form>...</form>
+      <!-- User Scoring Profiles section -->
+    /.content-primary
+  /[data-role="content"]
+  <script>...</script>   ← INSIDE the page div
+/#UpcomingMoviesConfigPage
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Configuration/configPage.html` | Correct div nesting — script moved back inside `#UpcomingMoviesConfigPage` |
+
+---
+
+**Current Version: v1.0.67**
 
