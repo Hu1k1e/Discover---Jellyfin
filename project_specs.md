@@ -1541,5 +1541,25 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.74**
+## Phase 50 — Recommendation Tuning and Discovery Deduplication (v1.0.75)
+
+### Root Cause / Requirement
+1. **Discover Duplicates**: The "Discover More" button fetches a completely fresh set of candidate movies from TMDB on each page request. Because TMDB's sorting changes and we re-score candidates locally, identical movies frequently appeared on subsequent pages.
+2. **Language Weighting**: The weighting multiplier for `original_language` was too strong (`×55.0` base + `20.0` recency). This caused users who watch a handful of foreign films (e.g., Malayalam or Korean) to see *only* films in those languages in their Tier 1 recommendations, drowning out other highly-rated content.
+
+### Fix
+- **Deduplication**: Added `DiscoveredTmdbIds` to `UserProfileData`. When assembling `tier1`, `tier2`, and `tier3` in `TmdbController`, we now check if the movie was already served. The IDs of served movies are appended to the list, which caps at 1000 and is saved to the profile. Requesting `page=1` clears the discovery session.
+- **Language Tuning**: Reduced the dominant language base multiplier from `55.0` to `35.0` and the recency bonus from `20.0` to `15.0`. This ensures language remains a strong preference without being completely exclusive.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Model/UserProfileData.cs` | Added `DiscoveredTmdbIds` list |
+| `Api/TmdbController.cs` | Tuned language weights and implemented tier deduplication logic |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.75.0 |
+
+---
+
+**Current Version: v1.0.75**
 

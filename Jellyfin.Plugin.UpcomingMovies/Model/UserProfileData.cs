@@ -53,5 +53,8 @@ public class UserProfileData
     /// <summary>Last 200 watch events, newest first. Used to rebuild weights on demand.</summary>
     public List<WatchEntry> RecentWatches { get; set; } = new();
 
+    /// <summary>TMDB movie IDs already served in the current Discover session to prevent duplicates.</summary>
+    public List<int> DiscoveredTmdbIds { get; set; } = new();
+
     public int TotalWatched { get; set; }
 }

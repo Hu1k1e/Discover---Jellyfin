@@ -206,6 +206,11 @@ public class TmdbController : ControllerBase
             var topActors   = svc?.GetTopActors(profile, 5)       ?? new List<int>();
             bool hasProfile = profile.TotalWatched > 0 || wlSeedIds.Count > 0;
 
+            if (page <= 1)
+            {
+                profile.DiscoveredTmdbIds.Clear();
+            }
+
             // Pre-parse filter params (needed by Source 10 candidate gathering AND post-filter step)
             var fLangSet = (filterLanguages ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
                             .Select(s => s.Trim().ToLowerInvariant()).Where(s => !string.IsNullOrEmpty(s)).ToHashSet();
@@ -641,9 +646,9 @@ public class TmdbController : ControllerBase
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
-                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 55.0; // Dominant weight
+                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 35.0; // Dominant weight (tuned down from 55)
                     if (recentLang.TryGetValue(lang, out var lr))
-                        score += (lr / maxLangRecency) * 20.0; // Strong recency signal
+                        score += (lr / maxLangRecency) * 15.0; // Strong recency signal (tuned down from 20)
                 }
 
                 // Dismissed genre penalty — subtract from score to suppress similar future picks
@@ -732,7 +737,7 @@ public class TmdbController : ControllerBase
             foreach (var x in allScored)
             {
                 if (tier1.Count >= 30) break;
-                if (usedIds.Add(x.movieId))
+                if (!profile.DiscoveredTmdbIds.Contains(x.movieId) && usedIds.Add(x.movieId))
                     tier1.Add(x.element);
             }
 
@@ -741,7 +746,7 @@ public class TmdbController : ControllerBase
             foreach (var x in allScored)
             {
                 if (tier2.Count >= 20) break;
-                if (!usedIds.Contains(x.movieId) && !x.hasTopGenre)
+                if (!profile.DiscoveredTmdbIds.Contains(x.movieId) && !usedIds.Contains(x.movieId) && !x.hasTopGenre)
                 {
                     usedIds.Add(x.movieId);
                     tier2.Add(x.element);
@@ -751,7 +756,7 @@ public class TmdbController : ControllerBase
             foreach (var x in allScored)
             {
                 if (tier2.Count >= 20) break;
-                if (!usedIds.Contains(x.movieId))
+                if (!profile.DiscoveredTmdbIds.Contains(x.movieId) && !usedIds.Contains(x.movieId))
                 {
                     usedIds.Add(x.movieId);
                     tier2.Add(x.element);
@@ -764,7 +769,7 @@ public class TmdbController : ControllerBase
                 .OrderByDescending(x => x.va * 0.6 + x.pop * 0.4))
             {
                 if (tier3.Count >= 10) break;
-                if (!usedIds.Contains(x.movieId))
+                if (!profile.DiscoveredTmdbIds.Contains(x.movieId) && !usedIds.Contains(x.movieId))
                 {
                     usedIds.Add(x.movieId);
                     tier3.Add(x.element);
@@ -774,7 +779,7 @@ public class TmdbController : ControllerBase
             foreach (var x in allScored)
             {
                 if (tier3.Count >= 10) break;
-                if (!usedIds.Contains(x.movieId))
+                if (!profile.DiscoveredTmdbIds.Contains(x.movieId) && !usedIds.Contains(x.movieId))
                 {
                     usedIds.Add(x.movieId);
                     tier3.Add(x.element);
@@ -800,6 +805,27 @@ public class TmdbController : ControllerBase
             // generated a completely different set of source candidates from TMDB.
             const int pageSize = 20;
             var pageResults = diversified.Take(pageSize).ToList();
+            
+            // Record everything served so it's not shown again
+            foreach (var res in pageResults)
+            {
+                if (res.TryGetProperty("id", out var idProp) && idProp.TryGetInt32(out var resId))
+                {
+                    profile.DiscoveredTmdbIds.Add(resId);
+                }
+            }
+            
+            // Cap history at 1000 items so file doesn't grow huge
+            if (profile.DiscoveredTmdbIds.Count > 1000)
+            {
+                profile.DiscoveredTmdbIds.RemoveRange(0, profile.DiscoveredTmdbIds.Count - 1000);
+            }
+            
+            if (!string.IsNullOrWhiteSpace(userId))
+            {
+                svc?.SaveProfile(profile);
+            }
+
             var totalPages  = Math.Max(1, (int)Math.Ceiling(diversified.Count / (double)pageSize));
             // Surface the real total so frontend knows when to stop
             // For practical purposes, treat as 50 pages (sources vary per page call so we never truly run out)
