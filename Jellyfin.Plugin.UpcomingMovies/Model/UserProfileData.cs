@@ -42,6 +42,14 @@ public class UserProfileData
     /// Used as recommendation seeds at 0.5× watch signal strength.</summary>
     public List<int> WatchlistTmdbIds { get; set; } = new();
 
+    /// <summary>TMDB movie IDs the user has explicitly dismissed via the X button.
+    /// These are permanently excluded from future recommendations.</summary>
+    public List<int> DismissedTmdbIds { get; set; } = new();
+
+    /// <summary>Genre ID → negative penalty weight accumulated from dismissed movies.
+    /// Applied as a negative multiplier in the scoring engine to suppress similar genres.</summary>
+    public Dictionary<int, double> DismissedGenrePenalties { get; set; } = new();
+
     /// <summary>Last 200 watch events, newest first. Used to rebuild weights on demand.</summary>
     public List<WatchEntry> RecentWatches { get; set; } = new();
 

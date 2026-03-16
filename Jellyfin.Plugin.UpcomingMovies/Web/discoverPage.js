@@ -144,9 +144,9 @@
                 background: #1a1a2e; color: #888; font-size: 2em;
             }
 
-            /* ── Star Badge ── */
+            /* ── Star Badge (top-left now) ── */
             .dc-star-badge {
-                position: absolute; top: 6px; right: 6px;
+                position: absolute; top: 6px; left: 6px;
                 background: rgba(10,10,10,0.85); color: #fff;
                 font-size: 0.8em; font-weight: 700;
                 padding: 3px 6px; border-radius: 4px;
@@ -154,6 +154,21 @@
                 z-index: 2; pointer-events: none;
             }
             .dc-star-badge svg { width: 12px; height: 12px; fill: #ffc107; }
+
+            /* ── Dismiss X button (top-right, only on recommendation cards) ── */
+            .dc-dismiss-btn {
+                position: absolute; top: 5px; right: 5px;
+                width: 22px; height: 22px;
+                background: rgba(20,20,20,0.85);
+                border: none; border-radius: 50%;
+                color: #fff; font-size: 13px; font-weight: 700; line-height: 22px;
+                cursor: pointer; z-index: 4;
+                display: flex; align-items: center; justify-content: center;
+                opacity: 0; transition: opacity 0.15s, background 0.15s;
+                padding: 0;
+            }
+            .discover-card:hover .dc-dismiss-btn { opacity: 1; }
+            .dc-dismiss-btn:hover { background: rgba(220,50,50,0.9); }
 
             /* ── Hover overlay: dark + centered play circle ── */
             .dc-overlay {
@@ -1004,9 +1019,48 @@
 
         modalHtml += '<div class="htv-modal-actions">' + actionsHtml + '</div>';
 
+        // Actor section placeholder — filled asynchronously after modal mounts
+        modalHtml += '<div id="htv-actors-' + opts.tmdbId + '" style="margin-top:16px;"></div>';
+
         modalHtml += '</div></div></div>';
         overlay.innerHTML = modalHtml;
         document.body.appendChild(overlay);
+
+        // ── Async: load actor credits and render round avatars ──
+        if (opts.tmdbId) {
+            var credCacheKey = 'credits_' + opts.tmdbId;
+            if (!window._creditsCache) window._creditsCache = {};
+            function renderActors(cast) {
+                if (!cast || cast.length === 0) return;
+                var actorsEl = document.getElementById('htv-actors-' + opts.tmdbId);
+                if (!actorsEl) return;
+                var topCast = cast.slice(0, 8);
+                var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">';
+                topCast.forEach(function(a) {
+                    var imgUrl = a.profile_path ? 'https://image.tmdb.org/t/p/w185' + a.profile_path : null;
+                    var avatarHtml = imgUrl
+                        ? '<img src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(a.name) + '" style="width:44px;height:44px;border-radius:50%;object-fit:cover;background:#222;"/>'
+                        : '<div style="width:44px;height:44px;border-radius:50%;background:#333;display:flex;align-items:center;justify-content:center;color:#888;font-size:18px;">&#128100;</div>';
+                    html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:54px;">'
+                        + avatarHtml
+                        + '<span style="font-size:0.68em;color:#bbb;text-align:center;line-height:1.2;word-break:break-word;">' + escapeHtml(a.name) + '</span>'
+                        + '</div>';
+                });
+                html += '</div>';
+                actorsEl.innerHTML = html;
+            }
+            if (window._creditsCache[credCacheKey] !== undefined) {
+                renderActors(window._creditsCache[credCacheKey]);
+            } else {
+                fetch('/UpcomingMovies/tmdb/credits?tmdbId=' + opts.tmdbId, {
+                    headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
+                    var cast = data && data.cast ? data.cast : null;
+                    window._creditsCache[credCacheKey] = cast;
+                    renderActors(cast);
+                }).catch(function() { window._creditsCache[credCacheKey] = null; });
+            }
+        }
 
         // Async fetch ratings to fill in IMDB and RT badges
         if (opts.tmdbId) {
@@ -1211,6 +1265,7 @@
             '<div class="dc-poster">'
             + posterHtml
             + badgeHtml
+            + (!isUpcoming ? '<button class="dc-dismiss-btn" title="Not interested" aria-label="Dismiss">&#x2715;</button>' : '')
             + watchlistHtml
             + playHtml
             + '</div>'
@@ -1272,6 +1327,35 @@
             showStreamModal({ title: title, posterUrl: posterUrl, backdropUrl: backdropUrl, streamUrl: e.currentTarget.dataset.streamUrl });
         });
 
+        // Dismiss button — only wired for recommendation cards
+        var btnDismiss = card.querySelector('.dc-dismiss-btn');
+        if (btnDismiss && !isUpcoming) {
+            btnDismiss.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                // Animate out
+                card.style.transition = 'opacity 0.25s, transform 0.25s';
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.85)';
+                // Record dismiss with profile service
+                try {
+                    var dClient = window.ApiClient;
+                    var dUserId = dClient && dClient.getCurrentUserId ? dClient.getCurrentUserId() : '';
+                    // Send genre IDs if we have them from the card data (opts.genreIds)
+                    var gParam = opts.genreIds && opts.genreIds.length ? '&genreIds=' + encodeURIComponent(opts.genreIds.join(',')) : '';
+                    if (dUserId && tmdbId) {
+                        await fetch('/UpcomingMovies/tmdb/dismiss?userId=' + encodeURIComponent(dUserId) + '&tmdbId=' + tmdbId + gParam, {
+                            method: 'POST',
+                            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                        });
+                    }
+                } catch(err) { WARN('Dismiss API error:', err); }
+                // Remove from DOM after animation
+                setTimeout(function() {
+                    if (card.parentNode) card.parentNode.removeChild(card);
+                }, 280);
+            });
+        }
+
         return card;
     }
 
@@ -1309,9 +1393,11 @@
                 isAvailable:  movie.isAvailable,
                 jellyfinId:   movie.jellyfinId,
                 voteAverage:  movie.vote_average,
-                isWatchlisted: !!movie.isWatchlisted
+                isWatchlisted: !!movie.isWatchlisted,
+                genreIds:     movie.genre_ids || []   // for dismiss genre penalization
             }));
         });
+
     }
 
     // ─────────────────────────────────────────────

@@ -225,6 +225,23 @@ public class TmdbController : ControllerBase
                 if (!movie.TryGetProperty("id", out var idProp) || !idProp.TryGetInt32(out var movieId)) return;
                 if (watchedIds.Contains(movieId)) return;
 
+                // ── Hard block: adult content ────────────────────────────────────────
+                // Exclude movies flagged as adult by TMDB (adult=true property)
+                if (movie.TryGetProperty("adult", out var adultProp) && adultProp.ValueKind == JsonValueKind.True)
+                    return;
+                // Also exclude by adult genre IDs (10400=Adult, 10401=Erotic can appear on some accounts)
+                if (movie.TryGetProperty("genre_ids", out var gCheckArr))
+                {
+                    foreach (var gEl in gCheckArr.EnumerateArray())
+                        if (gEl.TryGetInt32(out var gid) && (gid == 10400 || gid == 10401)) return;
+                }
+                // ── End adult block ──────────────────────────────────────────────────
+
+                // ── Dismissed-movie block ────────────────────────────────────────────
+                // Skip movies the user has explicitly dismissed via the X button
+                if (profile.DismissedTmdbIds.Contains(movieId)) return;
+                // ── End dismissed block ──────────────────────────────────────────────
+
                 // Language allowlist: only surface languages the user cares about
                 // en=Hollywood, hi=Hindi, ta=Tamil, ml=Malayalam, te=Telugu, ko=Korean, ja=Japanese/Anime
                 // bypassLangFilter=true is set by Source 9 for the user's own top language
@@ -614,14 +631,29 @@ public class TmdbController : ControllerBase
                     }
                 }
 
-                // Language affinity — dramatically boosted log-normalised × 35.0
-                // Recency bonus: up to +15 pts if the user has watched this language very recently
+                // Language affinity — boosted log-normalised × 55.0
+                // Recency bonus: up to +20 pts if the user has watched this language very recently
+                // These high multipliers ensure that if a person watches mostly regional films
+                // (e.g. Malayalam), those movies dominate Tier 1 recommendations without being exclusive.
                 if (m.TryGetProperty("original_language", out var langProp))
                 {
                     var lang = langProp.GetString() ?? "en";
-                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 35.0; // Boosted from 6.0
+                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 55.0; // Dominant weight
                     if (recentLang.TryGetValue(lang, out var lr))
-                        score += (lr / maxLangRecency) * 15.0; // Boosted from 5.0
+                        score += (lr / maxLangRecency) * 20.0; // Strong recency signal
+                }
+
+                // Dismissed genre penalty — subtract from score to suppress similar future picks
+                if (m.TryGetProperty("genre_ids", out var penaltyGenreArr))
+                {
+                    foreach (var g in penaltyGenreArr.EnumerateArray())
+                    {
+                        if (g.TryGetInt32(out var pgid))
+                        {
+                            var penalty = profile.DismissedGenrePenalties.GetValueOrDefault(pgid);
+                            if (penalty > 0) score -= penalty * 3.0; // Reduce but don't completely exclude
+                        }
+                    }
                 }
 
                 // Vote average (0–10 → 0–70 pts) — core quality signal
@@ -945,7 +977,53 @@ public class TmdbController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// GET /UpcomingMovies/tmdb/credits?tmdbId={id}
+    /// Lightweight TMDB credits proxy — returns the top cast list for the movie popup.
+    /// </summary>
+    [HttpGet("credits")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetMovieCredits([FromQuery] int tmdbId = 0)
+    {
+        if (tmdbId == 0) return BadRequest(new { error = "tmdbId required" });
+        var apiKey = Plugin.Instance?.Configuration.TmdbApiKey ?? "";
+        if (string.IsNullOrWhiteSpace(apiKey)) return BadRequest(new { error = "TMDB API key not set" });
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var url = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}&language=en-US";
+            var res = await client.GetAsync(url).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode)
+                return StatusCode((int)res.StatusCode, new { error = "TMDB upstream error" });
+
+            using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync().ConfigureAwait(false));
+            // Return just the cast array (top 8 is enough for the UI)
+            var cast = doc.RootElement.TryGetProperty("cast", out var castEl)
+                ? castEl.EnumerateArray()
+                    .Take(8)
+                    .Select(a => new
+                    {
+                        id           = a.TryGetProperty("id", out var idP) && idP.TryGetInt32(out var idV) ? idV : 0,
+                        name         = a.TryGetProperty("name", out var np) ? np.GetString() : "",
+                        character    = a.TryGetProperty("character", out var cp) ? cp.GetString() : "",
+                        profile_path = a.TryGetProperty("profile_path", out var pp) ? pp.GetString() : null
+                    }).ToList()
+                : new List<object>().Cast<dynamic>().ToList();
+
+            return Ok(new { cast });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UpcomingMovies] GetMovieCredits failed for {Id}", tmdbId);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     // ── Watchlist Fulfillment ───────────────────────────────────────────────────
+
     // Called by Jellyseerr webhook (or manually) when a requested movie becomes
     // available in Jellyfin.  Adds the movie to the watchlists of all users who
     // had requested it via the Request button on the Discover page.
@@ -1062,6 +1140,85 @@ public class TmdbController : ControllerBase
         var users = svc.GetAllProfileUserIds();
         return Ok(new { count = users.Count, userIds = users });
     }
+
+    /// <summary>
+    /// POST /UpcomingMovies/tmdb/dismiss
+    /// Records that the user does not want to see this movie (X button press).
+    /// Records the TMDB ID as dismissed (permanently excluded) and applies a
+    /// negative genre penalty to reduce the chance of similar movies appearing.
+    /// </summary>
+    [HttpPost("dismiss")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> DismissMovie(
+        [FromQuery] string userId = "",
+        [FromQuery] int    tmdbId = 0,
+        [FromQuery] string genreIds = "")
+    {
+        if (string.IsNullOrWhiteSpace(userId) || tmdbId == 0)
+            return BadRequest(new { error = "userId and tmdbId are required" });
+
+        var svc = ProfileService;
+        if (svc is null) return StatusCode(503, new { error = "ProfileService not initialised" });
+
+        var profile = svc.GetProfile(userId);
+
+        // Add to permanent dismissed list (guard against dupes)
+        if (!profile.DismissedTmdbIds.Contains(tmdbId))
+            profile.DismissedTmdbIds.Add(tmdbId);
+
+        // Parse genre IDs sent by the client (comma-separated)
+        var gids = (genreIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Where(s => int.TryParse(s.Trim(), out _))
+            .Select(s => int.Parse(s.Trim()))
+            .ToList();
+
+        // If frontend didn't send genre IDs, try to fetch from TMDB
+        if (gids.Count == 0)
+        {
+            try
+            {
+                var apiKey = Plugin.Instance?.Configuration.TmdbApiKey ?? "";
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    var r = await client.GetAsync($"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}&language=en-US").ConfigureAwait(false);
+                    if (r.IsSuccessStatusCode)
+                    {
+                        using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync().ConfigureAwait(false));
+                        if (doc.RootElement.TryGetProperty("genre_ids", out var gArr))
+                            foreach (var g in gArr.EnumerateArray())
+                                if (g.TryGetInt32(out var gid)) gids.Add(gid);
+                        else if (doc.RootElement.TryGetProperty("genres", out var gArrFull))
+                            foreach (var g in gArrFull.EnumerateArray())
+                                if (g.TryGetProperty("id", out var gidEl) && gidEl.TryGetInt32(out var gid)) gids.Add(gid);
+                    }
+                }
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] DismissMovie: failed to fetch genre list for {Id}", tmdbId); }
+        }
+
+        // Apply negative genre penalty (same decay as positive signals for consistency)
+        const double DismissDecay = 0.95;
+        const double DismissPenaltyPerGenre = 2.5;
+        foreach (var gid in gids)
+        {
+            if (profile.DismissedGenrePenalties.TryGetValue(gid, out var existing))
+                profile.DismissedGenrePenalties[gid] = existing * DismissDecay + DismissPenaltyPerGenre;
+            else
+                profile.DismissedGenrePenalties[gid] = DismissPenaltyPerGenre;
+        }
+
+        svc.SaveProfile(profile);
+        _logger.LogInformation("[UpcomingMovies] User {User} dismissed tmdbId={Id} genres=[{Genres}]",
+            userId, tmdbId, string.Join(",", gids));
+        return Ok(new { dismissed = tmdbId, genresPenalised = gids });
+    }
 }
+
+
+
+
 
 

@@ -1259,4 +1259,44 @@ A strong language match now contributes up to 50 points to a movie's score (up f
 | File | Change |
 |------|--------|
 | `Api/TmdbController.cs` | Boosted language multipliers to 35.0 / 15.0; Removed `Skip()` from pagination to fix page 4+ duplicates. |
+
+---
+
+## Phase 48 — Adult Filter, Dismiss Button, Actor Popup, Regional Language Dominance (v1.0.64)
+
+### Feature 1: Hard Adult Content Block
+- `AddCandidate` in `TmdbController.cs` now checks `adult: true` property from TMDB and returns immediately
+- Also excludes genre IDs 10400 (Adult) and 10401 (Erotic) which can appear on some TMDB accounts
+- This is a permanent hard block — no adult movies will ever appear in recommendations or upcoming
+
+### Feature 2: Dismiss Movie X Button
+- **UI**: Small ✕ button appears top-right of every recommendation card on hover; fades in at opacity 0 → 1
+- **Rating badge** moved from top-right to top-left to make room for the X button
+- **Animation**: Card fades out + scales down (0.25s) on dismiss click
+- **Backend**: `POST /UpcomingMovies/tmdb/dismiss?userId=&tmdbId=&genreIds=` endpoint added to `TmdbController.cs`
+  - Adds tmdbId to `DismissedTmdbIds` (permanent exclusion from recommendations)
+  - Applies negative genre penalties via `DismissedGenrePenalties` dictionary (decay × 0.95 + 2.5 per genre)
+- **Scoring**: `DismissedGenrePenalties` are subtracted (×3.0) from candidate scores in the scoring engine
+- **Data model**: `UserProfileData.cs` extended with `DismissedTmdbIds` (List\<int\>) and `DismissedGenrePenalties` (Dict\<int, double\>)
+- `genreIds` (movie.genre_ids) now passed through `renderTmdbCards` → `buildCard` opts for dismiss calls
+
+### Feature 3: Actor Images in Movie Popup
+- `showOverviewModal` now renders a row of up to 8 actors with round avatars (44px circle) + name below
+- Actor data fetched async from `GET /UpcomingMovies/tmdb/credits?tmdbId=N` (new endpoint, returns top 8 cast)
+- Actor credits cached in `window._creditsCache` to avoid re-fetching on repeated popup opens
+- Fallback person icon shown if actor has no TMDB profile photo
+
+### Feature 4: Regional Language Dominance in Scoring
+- Language multiplier raised again: `35.0` → `55.0` (overall) and `15.0` → `20.0` (recency bonus)
+- A strong watched-language match now contributes up to ~70 points to a movie's score
+- Users who watch mostly regional films (Malayalam, Hindi, etc.) will see them dominate recommendations
+- English movies still appear via quality/popularity signals for diversity
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Model/UserProfileData.cs` | Added `DismissedTmdbIds`, `DismissedGenrePenalties` |
+| `Api/TmdbController.cs` | Adult hard-block in `AddCandidate`; language weight 55.0/20.0; dismissed block in `AddCandidate`; dismissed genre penalty in scoring; new `/dismiss` and `/credits` endpoints |
+| `Web/discoverPage.js` | Dismiss X button CSS + HTML; rating badge moved top-left; dismiss event handler + API call; actor images in popup; `genreIds` passed via `buildCard` |
 
