@@ -1619,5 +1619,24 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.78**
+## Phase 54 — Revert Upcoming Chronological Sort (v1.0.79)
+
+### Root Cause / Requirement
+- The user requested to revert the chronological sorting mechanism for Upcoming Movies introduced in Phases 52 and 53, as it pulled in too many random or obscure movies from the TMDB API, even with the `popularity.gte=10` filter applied. The goal is to return to the original robust `popularity.desc` sorting for Upcoming Movies.
+
+### Fix
+- Reverted changes in `TmdbController.cs`: restored `sort_by=popularity.desc` and removed the `showAll` query parameter and associated `popularity.gte` filtering. Restored the C# local list sorting to order by the `popularity` double descending.
+- Reverted changes in `discoverPage.js`: removed the "Show Everything" checkbox, its event listeners, and the `showAll` parameter from the `fetch` query string builder and from `_upcFilters`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Reverted query sort parameters and removed popularity filter |
+| `Web/discoverPage.js` | Removed `showAll` UI checkbox and filter state logic |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.79.0 |
+
+---
+
+**Current Version: v1.0.79**
 
