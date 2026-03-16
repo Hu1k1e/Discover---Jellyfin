@@ -1561,5 +1561,24 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.75**
+## Phase 51 — UI Polish: Watchlist Banner & Modal Gap (v1.0.76)
+
+### Root Cause / Requirement
+1. **Watchlist Banner Placement**: The "Add to Watchlist" bookmark banner was pinned to the top-left of the movie cards, taking up visual real estate. It needed to be moved to the bottom-right.
+2. **Modal Gap**: The movie detail modal lacked breathing room between the rating badges (Rotten Tomatoes, IMDB, Jellyfin) and the text overview/synopsis directly below it.
+
+### Fix
+- Modified `.dc-watchlist-btn` CSS in `discoverPage.js` to use `bottom: 7px; right: 7px;` instead of `top: 7px; left: 7px;`.
+- Modified `.htv-ratings-row` CSS in `discoverPage.js` to change the bottom margin from `2px` to `16px`, adding an appropriate gap above the synopsis.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Updated CSS positioning and margins |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.76.0 |
+
+---
+
+**Current Version: v1.0.76**
 

@@ -8,9 +8,9 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <NoWarn>CS1591</NoWarn>
-    <Version>1.0.75.0</Version>
-    <AssemblyVersion>1.0.75.0</AssemblyVersion>
-    <FileVersion>1.0.75.0</FileVersion>
+    <Version>1.0.76.0</Version>
+    <AssemblyVersion>1.0.76.0</AssemblyVersion>
+    <FileVersion>1.0.76.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

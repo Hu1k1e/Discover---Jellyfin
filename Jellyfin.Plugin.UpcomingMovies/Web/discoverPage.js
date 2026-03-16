@@ -229,7 +229,7 @@
             .btn-play:hover { background: #00C853 !important; border-color: #00C853 !important; }
 
             /* ── Rating badges in overview modal ── */
-            .htv-ratings-row { display: flex; gap: 10px; margin: 10px 0 2px; flex-wrap: wrap; }
+            .htv-ratings-row { display: flex; gap: 10px; margin: 10px 0 16px; flex-wrap: wrap; }
             .htv-rating-badge {
                 display: inline-flex; align-items: center; gap: 5px;
                 background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
@@ -365,7 +365,7 @@
 
             /* ── Watchlist bookmark banner ── */
             .dc-watchlist-btn {
-                position: absolute; top: 7px; left: 7px;
+                position: absolute; bottom: 7px; right: 7px;
                 width: 30px; height: 36px;
                 background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px);
                 border: none; border-radius: 4px;
