@@ -646,11 +646,11 @@ public class TmdbController : ControllerBase
                 // Dismissed genre penalty — subtract from score to suppress similar future picks
                 if (m.TryGetProperty("genre_ids", out var penaltyGenreArr))
                 {
-                    foreach (var g in penaltyGenreArr.EnumerateArray())
+                    foreach (var penG in penaltyGenreArr.EnumerateArray())
                     {
-                        if (g.TryGetInt32(out var pgid))
+                        if (penG.TryGetInt32(out var penGid))
                         {
-                            var penalty = profile.DismissedGenrePenalties.GetValueOrDefault(pgid);
+                            var penalty = profile.DismissedGenrePenalties.GetValueOrDefault(penGid);
                             if (penalty > 0) score -= penalty * 3.0; // Reduce but don't completely exclude
                         }
                     }
@@ -1001,19 +1001,21 @@ public class TmdbController : ControllerBase
 
             using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync().ConfigureAwait(false));
             // Return just the cast array (top 8 is enough for the UI)
-            var cast = doc.RootElement.TryGetProperty("cast", out var castEl)
-                ? castEl.EnumerateArray()
-                    .Take(8)
-                    .Select(a => new
+            var castList = new List<object>();
+            if (doc.RootElement.TryGetProperty("cast", out var castEl))
+            {
+                foreach (var a in castEl.EnumerateArray().Take(8))
+                {
+                    castList.Add(new
                     {
                         id           = a.TryGetProperty("id", out var idP) && idP.TryGetInt32(out var idV) ? idV : 0,
-                        name         = a.TryGetProperty("name", out var np) ? np.GetString() : "",
-                        character    = a.TryGetProperty("character", out var cp) ? cp.GetString() : "",
+                        name         = a.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "",
+                        character    = a.TryGetProperty("character", out var cp) ? cp.GetString() ?? "" : "",
                         profile_path = a.TryGetProperty("profile_path", out var pp) ? pp.GetString() : null
-                    }).ToList()
-                : new List<object>().Cast<dynamic>().ToList();
-
-            return Ok(new { cast });
+                    });
+                }
+            }
+            return Ok(new { cast = castList });
         }
         catch (Exception ex)
         {
@@ -1187,12 +1189,16 @@ public class TmdbController : ControllerBase
                     if (r.IsSuccessStatusCode)
                     {
                         using var doc = JsonDocument.Parse(await r.Content.ReadAsStringAsync().ConfigureAwait(false));
-                        if (doc.RootElement.TryGetProperty("genre_ids", out var gArr))
-                            foreach (var g in gArr.EnumerateArray())
-                                if (g.TryGetInt32(out var gid)) gids.Add(gid);
-                        else if (doc.RootElement.TryGetProperty("genres", out var gArrFull))
-                            foreach (var g in gArrFull.EnumerateArray())
-                                if (g.TryGetProperty("id", out var gidEl) && gidEl.TryGetInt32(out var gid)) gids.Add(gid);
+                        if (doc.RootElement.TryGetProperty("genre_ids", out var gArr1))
+                        {
+                            foreach (var gEl1 in gArr1.EnumerateArray())
+                                if (gEl1.TryGetInt32(out var gId1)) gids.Add(gId1);
+                        }
+                        else if (doc.RootElement.TryGetProperty("genres", out var gArr2))
+                        {
+                            foreach (var gEl2 in gArr2.EnumerateArray())
+                                if (gEl2.TryGetProperty("id", out var gIdEl2) && gIdEl2.TryGetInt32(out var gId2)) gids.Add(gId2);
+                        }
                     }
                 }
             }
@@ -1202,13 +1208,14 @@ public class TmdbController : ControllerBase
         // Apply negative genre penalty (same decay as positive signals for consistency)
         const double DismissDecay = 0.95;
         const double DismissPenaltyPerGenre = 2.5;
-        foreach (var gid in gids)
+        foreach (var dismissGid in gids)
         {
-            if (profile.DismissedGenrePenalties.TryGetValue(gid, out var existing))
-                profile.DismissedGenrePenalties[gid] = existing * DismissDecay + DismissPenaltyPerGenre;
+            if (profile.DismissedGenrePenalties.TryGetValue(dismissGid, out var existing))
+                profile.DismissedGenrePenalties[dismissGid] = existing * DismissDecay + DismissPenaltyPerGenre;
             else
-                profile.DismissedGenrePenalties[gid] = DismissPenaltyPerGenre;
+                profile.DismissedGenrePenalties[dismissGid] = DismissPenaltyPerGenre;
         }
+
 
         svc.SaveProfile(profile);
         _logger.LogInformation("[UpcomingMovies] User {User} dismissed tmdbId={Id} genres=[{Genres}]",
