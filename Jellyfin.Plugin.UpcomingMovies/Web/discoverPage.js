@@ -1273,13 +1273,9 @@
             + (isUpcoming && date ? '<div class="dc-date">' + date + '</div>' : '')
             + (actionsHtml ? '<div class="dc-action-bar">' + actionsHtml + '</div>' : '');
 
-        // Poster Click Routing
+        // Poster Click Routing - ALWAYS open the overview modal. The Play button handles direct routing.
         card.querySelector('.dc-poster').addEventListener('click', function(e) {
-            if (!isUpcoming && isAvailable && jellyfinId) {
-                window.location.hash = '#/details?id=' + jellyfinId;
-            } else {
-                showOverviewModal(opts);
-            }
+            showOverviewModal(opts);
         });
 
         // Action Bar Play Route (Mobile/Direct)

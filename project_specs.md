@@ -1638,5 +1638,23 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.79**
+## Phase 55 — Recommended Poster Click Behavior (v1.0.80)
+
+### Root Cause / Requirement
+- Previously, clicking the poster of a "Recommended For You" movie that was already available on the server routed the user directly to the Jellyfin movie details page.
+- The user requested that clicking the poster *always* opens the custom movie details modal (where trailers/info can be seen), and only clicking the explicit "Play" button routes to the Jellyfin details/playback page.
+
+### Fix
+- Modified the `.dc-poster` click event listener in `discoverPage.js`. Removed the conditional check that routed to `window.location.hash = '#/details?id=' + jellyfinId` if the movie was locally available. Now, clicking the poster unconditionally calls `showOverviewModal(opts)`. The `btn-play` Action Bar route was left untouched, correctly handling the direct Jellyfin route.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Updated poster click listener to always open outline modal |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.80.0 |
+
+---
+
+**Current Version: v1.0.80**
 
