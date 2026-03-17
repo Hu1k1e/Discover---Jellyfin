@@ -1734,5 +1734,28 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.84**
+## Phase 60 — Modal Playback Logic & X Icon Alignment (v1.0.85)
+
+### Root Cause / Requirement
+- The user requested that clicking the "Play" button or overlay on the movie cards should **not** instantly play the movie, but instead open the movie details modal (the same action as clicking the poster).
+- The movie details modal did not have a "Play" button for available movies, showing only "Request" unconditionally.
+- The modal's Close button ("X") still used the `\u00D7` HTML entity which caused subtle misalignment issues across devices compared to the SVG fix applied to the cards.
+- Directly invoking Jellyfin's `PlaybackManager` from the cards without transitioning UI state caused a "white screen" error for the user.
+
+### Fix
+- Reverted the `.btn-play` and `.dc-jellyfin-play-btn` click listeners on the discover cards to simply call `showOverviewModal(opts)`. All interactions on the poster now universally lead to the details modal.
+- Updated `showOverviewModal` to dynamically check `opts.isAvailable`. If the movie is available in Jellyfin, the modal now displays a **Play** button immediately followed by the **Stream** button.
+- Bound the modal "Play" button to route to `window.location.hash = '#/video?itemId=' + opts.jellyfinId`, which correctly delegates playback to Jellyfin's standard router.
+- Replaced the inner HTML of the modal's `.htv-modal-close` button with the identical exact-dimension SVG used for the dismiss buttons to ensure pixel-perfect alignment.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Card play buttons open modal, modal renders Play button correctly, modal uses SVG close icon, modal Play routes to local video playback. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.85.0 |
+
+---
+
+**Current Version: v1.0.85**
 

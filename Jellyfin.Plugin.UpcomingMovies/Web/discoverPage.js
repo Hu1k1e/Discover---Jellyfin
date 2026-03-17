@@ -1005,16 +1005,19 @@
 
         // Actions
         var actionsHtml = '';
-        var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(String(opts.tmdbId))) || false;
-
-        var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
-        if (isRequested || (existingBtn && existingBtn.classList.contains('requested'))) {
-            actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + opts.tmdbId + '" disabled>&#10003; Requested</button>';
+        if (opts.isAvailable && opts.jellyfinId) {
+            actionsHtml += '<button class="btn-play" data-jellyfin="' + opts.jellyfinId + '">&#9654; Play</button>';
         } else {
-            actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + opts.tmdbId + '">Request</button>';
+            var isRequested = (window._jellyseerrRequests && window._jellyseerrRequests.has(String(opts.tmdbId))) || false;
+            var existingBtn = document.querySelector('.btn-request[data-tmdb="' + opts.tmdbId + '"]');
+            if (isRequested || (existingBtn && existingBtn.classList.contains('requested'))) {
+                actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + opts.tmdbId + '" disabled>&#10003; Requested</button>';
+            } else {
+                actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + opts.tmdbId + '">Request</button>';
+            }
         }
 
-        if (!opts.isUpcoming && opts.streamBaseUrl) {
+        if (opts.streamBaseUrl) {
             actionsHtml += '<button class="btn-stream" data-stream-url="' + opts.streamBaseUrl + '/movie/' + opts.tmdbId + '">Stream</button>';
         }
 
@@ -1126,6 +1129,17 @@
                     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
                     openRequestModal(String(opts.tmdbId), opts.title, opts.backdropUrl);
                 }, 50);
+            });
+        }
+
+        // Play button inside overview modal -> direct playback
+        var modalPlayBtn = overlay.querySelector('.btn-play');
+        if (modalPlayBtn && opts.jellyfinId) {
+            modalPlayBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                overlay.classList.remove('show');
+                setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 50);
+                window.location.hash = '#/video?itemId=' + opts.jellyfinId;
             });
         }
 
@@ -1292,33 +1306,21 @@
             showOverviewModal(opts);
         });
 
-        // Action Bar Play Route (Mobile/Direct)
+        // Action Bar Play Route -> Now opens modal per user request
         var btnPlay = card.querySelector('.btn-play');
-        if (btnPlay && jellyfinId) {
+        if (btnPlay) {
             btnPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                if (window.appRouter && window.appRouter.showVideoOsd) {
-                    window.appRouter.showVideoOsd([{ Id: jellyfinId }]);
-                } else if (window.PlaybackManager && window.PlaybackManager.play) {
-                    window.PlaybackManager.play({ items: [{ Id: jellyfinId }] });
-                } else {
-                    window.location.hash = '#/video?itemId=' + jellyfinId;
-                }
+                showOverviewModal(opts);
             });
         }
 
-        // Overlay Play Route
+        // Overlay Play Route -> Now opens modal per user request
         var btnOverlayPlay = card.querySelector('.dc-jellyfin-play-btn');
-        if (btnOverlayPlay && jellyfinId) {
+        if (btnOverlayPlay) {
             btnOverlayPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                if (window.appRouter && window.appRouter.showVideoOsd) {
-                    window.appRouter.showVideoOsd([{ Id: jellyfinId }]);
-                } else if (window.PlaybackManager && window.PlaybackManager.play) {
-                    window.PlaybackManager.play({ items: [{ Id: jellyfinId }] });
-                } else {
-                    window.location.hash = '#/video?itemId=' + jellyfinId;
-                }
+                showOverviewModal(opts);
             });
         }
 
