@@ -275,11 +275,12 @@
 
             .htv-modal-close {
                 position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
-                border: none; color: #fff; width: 52px; height: 52px;
+                border: none; color: #fff; width: 36px; height: 36px;
                 border-radius: 50%; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
                 transition: background 0.2s;
             }
             .htv-modal-close:hover { background: rgba(255,255,255,0.25); }
+            .htv-modal-close svg { width: 14px; height: 14px; fill: #fff; pointer-events: none; }
             .htv-modal-close svg { width: 20px; height: 20px; fill: #fff; pointer-events: none; }
             
             .htv-modal-body {
@@ -305,6 +306,7 @@
                 background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff;
             }
             .htv-modal-actions button:hover, .htv-modal-actions a:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+            .htv-modal-actions .btn-play { background: #00C853 !important; border-color: #00C853 !important; color: #000 !important; }
             .htv-modal-actions .btn-request:hover { background: #7B5EA7 !important; border-color: #7B5EA7 !important; }
             .htv-modal-actions .btn-stream:hover { background: #00C853 !important; border-color: #00C853 !important; }
             .htv-modal-actions .btn-request.requested { background: #4a4a4a !important; border-color: #4a4a4a !important; transform: none; cursor: default; box-shadow: none; pointer-events: none; opacity: 0.6; }
@@ -1132,14 +1134,30 @@
             });
         }
 
-        // Play button inside overview modal -> direct playback
+        // Play button inside overview modal -> fetch full item, then play natively
         var modalPlayBtn = overlay.querySelector('.btn-play');
         if (modalPlayBtn && opts.jellyfinId) {
             modalPlayBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                overlay.classList.remove('show');
-                setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 50);
-                window.location.hash = '#/video?itemId=' + opts.jellyfinId;
+                var btn = e.currentTarget;
+                btn.innerHTML = 'Loading...';
+                btn.disabled = true;
+                
+                var uid = window.ApiClient.getCurrentUserId ? window.ApiClient.getCurrentUserId() : '';
+                window.ApiClient.getItem(uid, opts.jellyfinId).then(function(item) {
+                    overlay.classList.remove('show');
+                    setTimeout(function() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 50);
+                    
+                    if (window.PlaybackManager && window.PlaybackManager.play) {
+                        window.PlaybackManager.play({ items: [item] });
+                    } else {
+                        window.location.hash = '#/details?id=' + opts.jellyfinId;
+                    }
+                }).catch(function(err) {
+                    btn.innerHTML = '&#9654; Play';
+                    btn.disabled = false;
+                    window.location.hash = '#/details?id=' + opts.jellyfinId;
+                });
             });
         }
 
@@ -1306,21 +1324,21 @@
             showOverviewModal(opts);
         });
 
-        // Action Bar Play Route -> Now opens modal per user request
+        // Action Bar Play Route -> Goes to Jellyfin Details page
         var btnPlay = card.querySelector('.btn-play');
         if (btnPlay) {
             btnPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                showOverviewModal(opts);
+                window.location.hash = '#/details?id=' + jellyfinId;
             });
         }
 
-        // Overlay Play Route -> Now opens modal per user request
+        // Overlay Play Route -> Goes to Jellyfin Details page
         var btnOverlayPlay = card.querySelector('.dc-jellyfin-play-btn');
         if (btnOverlayPlay) {
             btnOverlayPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                showOverviewModal(opts);
+                window.location.hash = '#/details?id=' + jellyfinId;
             });
         }
 

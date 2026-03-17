@@ -1757,5 +1757,28 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.85**
+## Phase 61 — Discover Page Playback & Modal CSS (v1.0.86)
+
+### Root Cause / Requirement
+- The user clarified that clicking the **Play** button on the Discover movie cards specifically needs to navigate to the Jellyfin details page (`#/details?id=...`). Clicking the card *anywhere else* continues to open the custom Discover Modal.
+- The **Play** button inside the Discover Modal was taking the user to the home page or producing a white screen. This was caused by attempting to trigger Jellyfin's `PlaybackManager` with incomplete item stubs (`{ Id: ... }`); the native player requires the full item metadata (media sources, runtime ticks) to initialize playback without crashing the UI.
+- The modal's Play button was entirely missing CSS, causing it to render without the intended green background like the Stream button.
+- The SVG X icon inside the modal was still slightly misaligned because the outer `.htv-modal-close` button retained a `52px` width/height from the previous unicode character design, while the movie card's X button was scaled to a tighter `22px`/`36px` wrapper.
+
+### Fix
+- Updated the `.btn-play` and `.dc-jellyfin-play-btn` click listeners on the Discover cards to strictly navigate to `window.location.hash = '#/details?id=' + opts.jellyfinId`.
+- Completely rewrote the Discover Modal's "Play" button logic: clicking Play now locks the button UI ("Loading..."), securely fetches the full local representation of the movie using `window.ApiClient.getItem`, and finally delegates that robust item directly to `PlaybackManager.play({ items: [item] })`. As a bulletproof fallback, if `PlaybackManager` is missing or crashes, it automatically routes to the details page.
+- Injected the missing CSS block for `.htv-modal-actions .btn-play` into the plugin template, guaranteeing it matches the Stream button aesthetic.
+- Shrunk `.htv-modal-close` from `52px` to `36px` and assigned explicitly fixed dimensions (`14px`) to the SVG itself, creating perfect circular alignment.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Re-routed card play buttons to details page. Rebuilt modal Play button with `ApiClient.getItem` to prevent white screens natively. Added missing `.btn-play` CSS and restricted SVG Close modal width. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.86.0 |
+
+---
+
+**Current Version: v1.0.86**
 
