@@ -1287,6 +1287,15 @@
             });
         }
 
+        // Overlay Play Route
+        var btnOverlayPlay = card.querySelector('.dc-jellyfin-play-btn');
+        if (btnOverlayPlay && jellyfinId) {
+            btnOverlayPlay.addEventListener('click', function(e) {
+                e.stopPropagation();
+                window.location.hash = '#/details?id=' + jellyfinId;
+            });
+        }
+
         // Request button → Jellyseerr modal
         var btnReq = card.querySelector('.btn-request');
         if (btnReq) btnReq.addEventListener('click', function(e) {

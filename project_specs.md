@@ -1656,5 +1656,24 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.80**
+## Phase 56 — Overlay Play Button Click Routing (v1.0.81)
+
+### Root Cause / Requirement
+- Following Phase 55, clicking anywhere on the poster opened the custom movie details modal perfectly. However, the requirement was that clicking the animated play button (which sits in the center of the poster overlay on recommended available movies) should continue to route the user directly to the Jellyfin movie page, bypassing the new custom modal.
+
+### Fix
+- Modified `discoverPage.js` to add an explicit click event listener to the `.dc-jellyfin-play-btn` overlay play button.
+- Used `e.stopPropagation()` in the handler so the event doesn't bubble up to the `.dc-poster` click listener.
+- Handled the direct route via `window.location.hash = '#/details?id=' + jellyfinId`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Added stopPropagation click handler to overlay play button |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.81.0 |
+
+---
+
+**Current Version: v1.0.81**
 
