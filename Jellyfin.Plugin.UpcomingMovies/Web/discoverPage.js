@@ -161,7 +161,7 @@
                 width: 22px; height: 22px;
                 background: rgba(20,20,20,0.85);
                 border: none; border-radius: 50%;
-                color: #fff; font-size: 10px; font-weight: 700; line-height: 22px;
+                color: #fff; font-size: 14px; font-weight: 700; line-height: 22px;
                 cursor: pointer; z-index: 4;
                 display: flex; align-items: center; justify-content: center;
                 opacity: 0; transition: opacity 0.15s, background 0.15s;
@@ -275,7 +275,7 @@
 
             .htv-modal-close {
                 position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
-                border: none; color: #fff; font-size: 28px; width: 52px; height: 52px;
+                border: none; color: #fff; font-size: 22px; width: 52px; height: 52px;
                 border-radius: 50%; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
                 transition: background 0.2s;
             }
@@ -1236,12 +1236,20 @@
                 }
             }
         } else if (tmdbId) {
-            // Upcoming: Just Request block button
-            var alreadyReqUp = window._jellyseerrRequests && window._jellyseerrRequests.has(String(tmdbId));
-            if (alreadyReqUp) {
-                actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + tmdbId + '" disabled>&#10003; Requested</button>';
+            // Upcoming
+            if (isAvailable && jellyfinId) {
+                actionsHtml += '<button class="btn-play" data-jellyfin="' + jellyfinId + '">Play</button>';
+                playHtml = '<div class="dc-overlay">'
+                    + '<button is="emby-button" type="button" class="dc-jellyfin-play-btn" tabindex="-1" aria-label="Play">'
+                    + '<span class="material-icons">play_circle</span>'
+                    + '</button></div>';
             } else {
-                actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+                var alreadyReqUp = window._jellyseerrRequests && window._jellyseerrRequests.has(String(tmdbId));
+                if (alreadyReqUp) {
+                    actionsHtml += '<button class="jellyseerr-request-button btn-request requested" data-tmdb="' + tmdbId + '" disabled>&#10003; Requested</button>';
+                } else {
+                    actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
+                }
             }
         }
 
@@ -1283,7 +1291,13 @@
         if (btnPlay && jellyfinId) {
             btnPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                window.location.hash = '#/details?id=' + jellyfinId;
+                if (window.appRouter && window.appRouter.showVideoOsd) {
+                    window.appRouter.showVideoOsd([{ Id: jellyfinId }]);
+                } else if (window.PlaybackManager && window.PlaybackManager.play) {
+                    window.PlaybackManager.play({ items: [{ Id: jellyfinId }] });
+                } else {
+                    window.location.hash = '#/video?itemId=' + jellyfinId;
+                }
             });
         }
 
@@ -1292,7 +1306,13 @@
         if (btnOverlayPlay && jellyfinId) {
             btnOverlayPlay.addEventListener('click', function(e) {
                 e.stopPropagation();
-                window.location.hash = '#/details?id=' + jellyfinId;
+                if (window.appRouter && window.appRouter.showVideoOsd) {
+                    window.appRouter.showVideoOsd([{ Id: jellyfinId }]);
+                } else if (window.PlaybackManager && window.PlaybackManager.play) {
+                    window.PlaybackManager.play({ items: [{ Id: jellyfinId }] });
+                } else {
+                    window.location.hash = '#/video?itemId=' + jellyfinId;
+                }
             });
         }
 

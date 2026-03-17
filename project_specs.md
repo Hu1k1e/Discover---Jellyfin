@@ -1675,5 +1675,44 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.81**
+## Phase 57 — X Button Proportions (v1.0.82)
+
+### Root Cause / Requirement
+- The user observed that the 'X' icon styling was disproportionate in two places:
+  1. The "Dismiss" button on the top right of the movie poster cards had too large of a circular background for the tiny `10px` 'X' inside it.
+  2. The custom modal "Close" button had too large of an 'X' (`font-size: 28px`) inside its `52px` background.
+
+### Fix
+- Modified `.dc-dismiss-btn` in `discoverPage.js`, scaling the font size up to `14px` so it proportional fills the `22px` circle.
+- Modified `.htv-modal-close` in `discoverPage.js`, scaling the font size down to `22px` so it fits better inside the `52px` circle.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Changed font-size values for both X buttons |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.82.0 |
+
+---
+
+## Phase 58 — Direct Video Playback & Upcoming Availability (v1.0.83)
+
+### Root Cause / Requirement
+- The "Play" button (both in the action bar and the poster overlay) routed users to the Jellyfin movie details page (`#/details?id=...`). The user requested that clicking Play should immediately start playing the movie.
+- For Upcoming Movies, if the movie was already available on the server, the card was still rendering a "Request" button instead of the "Play" actions seen on Recommended cards.
+
+### Fix
+- Modified `.btn-play` and `.dc-jellyfin-play-btn` click listeners in `discoverPage.js` to trigger Jellyfin's internal playback routing (`window.appRouter.showVideoOsd` or `window.PlaybackManager.play`) instead of changing the hash to the details page.
+- Updated the action bar generation logic for Upcoming movies to perform the same `isAvailable && jellyfinId` check used by Recommended movies, rendering the Play button and overlay if the movie is already on the server.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Updated Play button routing to trigger playback, fixed Upcoming availability actions |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.83.0 |
+
+---
+
+**Current Version: v1.0.83**
 
