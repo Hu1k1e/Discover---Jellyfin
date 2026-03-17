@@ -1780,5 +1780,23 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.86**
+## Phase 62 — Reverting Upcoming Stream Button (v1.0.87)
+
+### Root Cause / Requirement
+- The user observed that the "Upcoming Movies" section now included the "Stream" button, which was added globally in Phase 59. The user explicitly requested to revert this behavior so that the Upcoming cards only display the "Request" (or "Play") button as they did previously.
+
+### Fix
+- Modified `buildCard` in `Web/discoverPage.js` and removed the structural block that injected the `.btn-stream` HTML specifically for the `isUpcoming` mode.
+- The Recommended movies continue to successfully render the Stream button, while Upcoming movies are strictly reverted back to showing just Play or Request.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Deleted the `btn-stream` block from the `isUpcoming` section of `buildCard`. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.87.0 |
+
+---
+
+**Current Version: v1.0.87**
 

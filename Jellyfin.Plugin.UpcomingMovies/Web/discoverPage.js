@@ -1285,10 +1285,6 @@
                     actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 }
             }
-            // Stream button gets added for BOTH Available and Request modes (if baseUrl provided)
-            if (streamBaseUrl && tmdbId) {
-                actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
-            }
         }
 
         var posterHtml = posterUrl
