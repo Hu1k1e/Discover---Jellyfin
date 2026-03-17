@@ -1714,5 +1714,25 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.83**
+## Phase 59 — Stream Button Availability & SVG Icons (v1.0.84)
+
+### Root Cause / Requirement
+- The user reported that "Available movies still has request and stream button instead of play and stream". The logic previously omitted the "Stream" button completely if the movie was marked Available. Additionally, `isAvailable` was not being computed for the "Upcoming" row at all, meaning available Upcoming movies perpetually showed "Request".
+- The X buttons for dismissing cards and closing the modal were still unproportional because changing `font-size` on HTML character entities (`&#x2715;`) did not accurately scale in all browsers/environments compared to the fixed background circle width.
+
+### Fix
+- Replaced the inner HTML of `.dc-dismiss-btn` and `.htv-modal-close` buttons to use inline standard SVGs, removing font scaling issues and setting an explicit `width` and `height` to make them perfectly proportional.
+- In `discoverPage.js`, modified `populateDiscoverContainer` to map `isAvailable` and `jellyfinId` from the user's Jellyfin library onto the Upcoming `upc.results` (previously only done for Recommendations). 
+- In `buildCard`, moved the `btn-stream` outside the `else if (tmdbId)` block so that if `streamBaseUrl` exists, the "Stream" button renders for ALL movies alongside either "Play" or "Request", satisfying the user's workflow expectation of "Play and Stream".
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Replaced X entities with SVGs, fixed Upcoming Availability mapping, rearranged Stream button location to render for Available movies. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.84.0 |
+
+---
+
+**Current Version: v1.0.84**
 

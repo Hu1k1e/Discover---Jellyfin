@@ -161,14 +161,14 @@
                 width: 22px; height: 22px;
                 background: rgba(20,20,20,0.85);
                 border: none; border-radius: 50%;
-                color: #fff; font-size: 14px; font-weight: 700; line-height: 22px;
-                cursor: pointer; z-index: 4;
+                color: #fff; cursor: pointer; z-index: 4;
                 display: flex; align-items: center; justify-content: center;
                 opacity: 0; transition: opacity 0.15s, background 0.15s;
                 padding: 0;
             }
             .discover-card:hover .dc-dismiss-btn { opacity: 1; }
             .dc-dismiss-btn:hover { background: rgba(220,50,50,0.9); }
+            .dc-dismiss-btn svg { width: 10px; height: 10px; fill: #fff; pointer-events: none; }
 
             /* ── Hover overlay: dark + centered play circle ── */
             .dc-overlay {
@@ -275,11 +275,12 @@
 
             .htv-modal-close {
                 position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.6);
-                border: none; color: #fff; font-size: 22px; width: 52px; height: 52px;
+                border: none; color: #fff; width: 52px; height: 52px;
                 border-radius: 50%; cursor: pointer; z-index: 10; display: flex; align-items: center; justify-content: center;
                 transition: background 0.2s;
             }
             .htv-modal-close:hover { background: rgba(255,255,255,0.25); }
+            .htv-modal-close svg { width: 20px; height: 20px; fill: #fff; pointer-events: none; }
             
             .htv-modal-body {
                 padding: 0 30px 30px 30px; display: flex; gap: 30px; margin-top: 120px; position: relative; z-index: 5;
@@ -1158,7 +1159,7 @@
         var overlay = document.createElement('div');
         overlay.className = 'htv-modal-overlay';
         var mHtml = '<div class="htv-modal-content" style="max-width:460px;">';
-        mHtml += '<button class="htv-modal-close" aria-label="Close">\u00D7</button>';
+        mHtml += '<button class="htv-modal-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg></button>';
         mHtml += opts.backdropUrl
             ? '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background-image:url(\'' + escapeHtml(opts.backdropUrl) + '\');"></div><div class="htv-modal-backdrop-overlay"></div></div>'
             : '<div class="htv-modal-backdrop-wrap"><div class="htv-modal-backdrop" style="background:#222;"></div><div class="htv-modal-backdrop-overlay"></div></div>';
@@ -1231,9 +1232,10 @@
                 } else {
                     actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 }
-                if (streamBaseUrl) {
-                    actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
-                }
+            }
+            // Stream button gets added for BOTH Available and Request modes (if baseUrl provided)
+            if (streamBaseUrl && tmdbId) {
+                actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
             }
         } else if (tmdbId) {
             // Upcoming
@@ -1250,6 +1252,10 @@
                 } else {
                     actionsHtml += '<button class="jellyseerr-request-button btn-request" data-tmdb="' + tmdbId + '">Request</button>';
                 }
+            }
+            // Stream button gets added for BOTH Available and Request modes (if baseUrl provided)
+            if (streamBaseUrl && tmdbId) {
+                actionsHtml += '<button class="btn-stream" data-stream-url="' + streamBaseUrl + '/movie/' + tmdbId + '">Stream</button>';
             }
         }
 
@@ -1273,7 +1279,7 @@
             '<div class="dc-poster">'
             + posterHtml
             + badgeHtml
-            + (!isUpcoming ? '<button class="dc-dismiss-btn" title="Not interested" aria-label="Dismiss">&#x2715;</button>' : '')
+            + (!isUpcoming ? '<button class="dc-dismiss-btn" title="Not interested" aria-label="Dismiss"><svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg></button>' : '')
             + watchlistHtml
             + playHtml
             + '</div>'
@@ -1541,6 +1547,19 @@
                         validRecs.push(m);
                     }
                     rec.results = validRecs;
+
+                    // Apply mapping to upcoming movies as well
+                    if (config.showUpcoming && upc && upc.results) {
+                        for(var j=0; j<upc.results.length; j++) {
+                            var u = upc.results[j];
+                            var uInfo = tmdbMap[u.id];
+                            if (uInfo) {
+                                u.isAvailable = true;
+                                u.jellyfinId = uInfo.id;
+                                u.isWatchlisted = uInfo.isWatchlisted;
+                            }
+                        }
+                    }
                 }
             } catch (err) {
                 WARN('Failed to check Jellyfin library availability:', err);
