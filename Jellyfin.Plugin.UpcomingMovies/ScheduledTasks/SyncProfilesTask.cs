@@ -95,6 +95,12 @@ public class SyncProfilesTask : IScheduledTask
                 if (movie.ProviderIds == null || !movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) || !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
                     continue;
 
+                double watchPercentage = 1.0;
+                if (played && movie.RunTimeTicks > 0 && userData?.PlaybackPositionTicks > 0)
+                {
+                    watchPercentage = (double)userData.PlaybackPositionTicks / movie.RunTimeTicks;
+                }
+
                 userMovies.Add(new HistoricalEvent
                 {
                     Movie = movie,
@@ -103,7 +109,8 @@ public class SyncProfilesTask : IScheduledTask
                     Liked = liked,
                     // Note: UserData doesn't always have a strict 'date watched' that's easy to pull without IUserDataRepository.
                     // We'll use LastPlayedDate if available
-                    Date = userData?.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1)
+                    Date = userData?.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1),
+                    WatchPercentage = watchPercentage
                 });
             }
 
@@ -123,11 +130,11 @@ public class SyncProfilesTask : IScheduledTask
 
                 if (evt.Played)
                 {
-                    ApplyHistoricalWatch(profile, evt.TmdbId, genreIds, details.Language, details.Directors, details.Actors, evt.Date);
+                    ApplyHistoricalWatch(profile, evt.TmdbId, genreIds, details.Language, details.Directors, details.Actors, details.Keywords, evt.Date, evt.WatchPercentage);
                 }
                 else if (evt.Liked)
                 {
-                    ApplyHistoricalWatchlist(profile, evt.TmdbId, genreIds, details.Language, details.Directors, details.Actors);
+                    ApplyHistoricalWatchlist(profile, evt.TmdbId, genreIds, details.Language, details.Directors, details.Actors, details.Keywords);
                 }
 
                 movieIndex++;
@@ -153,6 +160,7 @@ public class SyncProfilesTask : IScheduledTask
         public bool Played { get; set; }
         public bool Liked { get; set; }
         public DateTime Date { get; set; }
+        public double WatchPercentage { get; set; } = 1.0;
     }
 
     private class MovieDetailsCache
@@ -160,6 +168,7 @@ public class SyncProfilesTask : IScheduledTask
         public string Language { get; set; } = "en";
         public List<int> Directors { get; set; } = new();
         public List<int> Actors { get; set; } = new();
+        public List<int> Keywords { get; set; } = new();
     }
 
     private async Task<MovieDetailsCache> GetCachedTmdbDetailsAsync(int tmdbId, CancellationToken cancellationToken)
@@ -225,6 +234,24 @@ public class SyncProfilesTask : IScheduledTask
                         }
                     }
                 }
+
+                // 3. Keywords
+                var kwUrl = $"{TmdbBaseUrl}/movie/{tmdbId}/keywords?api_key={apiKey}";
+                var kwRes = await client.GetAsync(kwUrl, cancellationToken).ConfigureAwait(false);
+                if (kwRes.IsSuccessStatusCode)
+                {
+                    using var doc = JsonDocument.Parse(await kwRes.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+                    if (doc.RootElement.TryGetProperty("keywords", out var kwArr))
+                    {
+                        foreach (var kw in kwArr.EnumerateArray())
+                        {
+                            if (kw.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var kwId))
+                            {
+                                details.Keywords.Add(kwId);
+                            }
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -237,32 +264,42 @@ public class SyncProfilesTask : IScheduledTask
     }
 
     // Custom Apply methods so we don't need to rewrite UserProfileService just to accept a Date
-    private void ApplyHistoricalWatch(UserProfileData profile, int tmdbId, List<int> genreIds, string language, List<int> directors, List<int> actors, DateTime watchDate)
+    private void ApplyHistoricalWatch(UserProfileData profile, int tmdbId, List<int> genreIds, string language, List<int> directors, List<int> actors, List<int> keywords, DateTime watchDate, double watchPercentage)
     {
         const double DecayFactor = 0.92;
         const double BaseWatchWeight = 5.0;
+
+        double multiplier = watchPercentage >= 0.9 ? 1.2
+                          : watchPercentage >= 0.5 ? 1.0
+                          : watchPercentage >= 0.2 ? 0.3
+                          :                         -0.5;
+        double weightChange = BaseWatchWeight * multiplier;
 
         if (!profile.WatchedTmdbIds.Contains(tmdbId))
             profile.WatchedTmdbIds.Add(tmdbId);
 
         // Decay
         foreach (var k in profile.GenreWeights.Keys.ToList()) profile.GenreWeights[k] *= DecayFactor;
+        foreach (var k in profile.KeywordWeights.Keys.ToList()) profile.KeywordWeights[k] *= DecayFactor;
         foreach (var k in profile.DirectorWeights.Keys.ToList()) profile.DirectorWeights[k] *= DecayFactor;
         foreach (var k in profile.ActorWeights.Keys.ToList()) profile.ActorWeights[k] *= DecayFactor;
         foreach (var k in profile.LanguageWeights.Keys.ToList()) profile.LanguageWeights[k] *= DecayFactor;
 
         // Add
-        foreach (var g in genreIds) profile.GenreWeights[g] = profile.GenreWeights.GetValueOrDefault(g) + BaseWatchWeight;
-        if (!string.IsNullOrWhiteSpace(language)) profile.LanguageWeights[language] = profile.LanguageWeights.GetValueOrDefault(language) + BaseWatchWeight;
-        foreach (var d in directors) profile.DirectorWeights[d] = profile.DirectorWeights.GetValueOrDefault(d) + (BaseWatchWeight * 2);
-        foreach (var a in actors.Take(5)) profile.ActorWeights[a] = profile.ActorWeights.GetValueOrDefault(a) + BaseWatchWeight;
+        foreach (var g in genreIds) profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
+        foreach (var k in keywords) profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
+        if (!string.IsNullOrWhiteSpace(language)) profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
+        foreach (var d in directors) profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
+        foreach (var a in actors.Take(5)) profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
 
         profile.RecentWatches.Insert(0, new WatchEntry
         {
             TmdbId = tmdbId,
             WatchedAt = watchDate,
             GenreIds = genreIds,
-            Language = language ?? "en"
+            KeywordIds = keywords,
+            Language = language ?? "en",
+            WatchPercentage = watchPercentage
         });
 
         if (profile.RecentWatches.Count > 200)
@@ -271,7 +308,7 @@ public class SyncProfilesTask : IScheduledTask
         profile.TotalWatched++;
     }
 
-    private void ApplyHistoricalWatchlist(UserProfileData profile, int tmdbId, List<int> genreIds, string language, List<int> directors, List<int> actors)
+    private void ApplyHistoricalWatchlist(UserProfileData profile, int tmdbId, List<int> genreIds, string language, List<int> directors, List<int> actors, List<int> keywords)
     {
         profile.WatchlistTmdbIds.Remove(tmdbId);
         profile.WatchlistTmdbIds.Insert(0, tmdbId);
@@ -281,6 +318,7 @@ public class SyncProfilesTask : IScheduledTask
         const double wlWeight = 5.0 * 0.5;
 
         foreach (var g in genreIds) profile.GenreWeights[g] = profile.GenreWeights.GetValueOrDefault(g) + wlWeight;
+        foreach (var k in keywords) profile.KeywordWeights[k] = profile.KeywordWeights.GetValueOrDefault(k) + wlWeight;
         if (!string.IsNullOrWhiteSpace(language)) profile.LanguageWeights[language] = profile.LanguageWeights.GetValueOrDefault(language) + wlWeight;
         foreach (var d in directors) profile.DirectorWeights[d] = profile.DirectorWeights.GetValueOrDefault(d) + (wlWeight * 2);
         foreach (var a in actors.Take(5)) profile.ActorWeights[a] = profile.ActorWeights.GetValueOrDefault(a) + wlWeight;

@@ -331,43 +331,45 @@ public class TmdbController : ControllerBase
                 catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] genre discover failed"); }
             });
 
-            // ── Source 4: Director-based discover (+25) ──────────────────────────────────
-            var directorTask = Task.Run(async () =>
+            // ── Source 4: Director-based discover (Dynamic) ──────────────────────────────
+            var directorTasks = topDirs.Select(async dirId =>
             {
-                if (topDirs.Count == 0) return;
                 try
                 {
-                    var pf = Uri.EscapeDataString(string.Join("|", topDirs));
-                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={pf}&page=1";
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={dirId}&page=1";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
+                    
+                    double dynamicBonus = NW(profile.DirectorWeights.GetValueOrDefault(dirId)) * 3.0; // scale so top director gives ~25-30
+                    
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
                     if (doc.RootElement.TryGetProperty("results", out var results))
                         foreach (var m in results.EnumerateArray())
-                            AddCandidate(m, 25.0);
+                            AddCandidate(m, dynamicBonus);
                 }
-                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] director discover failed"); }
-            });
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] director discover failed for {DirId}", dirId); }
+            }).ToList();
 
-            // ── Source 5: Actor-based discover (+20) ────────────────────────────────────
-            var actorTask = Task.Run(async () =>
+            // ── Source 5: Actor-based discover (Dynamic) ────────────────────────────────
+            var actorTasks = topActors.Select(async actorId =>
             {
-                if (topActors.Count == 0) return;
                 try
                 {
-                    var pf = Uri.EscapeDataString(string.Join("|", topActors));
-                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={pf}&page=1";
+                    var url = $"{TmdbBaseUrl}/discover/movie?api_key={apiKey}&language=en-US&sort_by=vote_average.desc&vote_count.gte=50&with_people={actorId}&page=1";
                     var res = await client.GetAsync(url).ConfigureAwait(false);
                     if (!res.IsSuccessStatusCode) return;
+                    
+                    double dynamicBonus = NW(profile.ActorWeights.GetValueOrDefault(actorId)) * 2.5; // scale so top actor gives ~20
+
                     var json = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
                     using var doc = JsonDocument.Parse(json);
                     if (doc.RootElement.TryGetProperty("results", out var results))
                         foreach (var m in results.EnumerateArray())
-                            AddCandidate(m, 20.0);
+                            AddCandidate(m, dynamicBonus);
                 }
-                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] actor discover failed"); }
-            });
+                catch (Exception ex) { _logger.LogWarning(ex, "[UpcomingMovies] actor discover failed for {ActorId}", actorId); }
+            }).ToList();
 
             // ── Source 6: Trending fallback for new users with no watch history (+5) ──────
             var trendingTask = Task.Run(async () =>
@@ -577,8 +579,8 @@ public class TmdbController : ControllerBase
                 Task.WhenAll(regionalDiscoverTasks), // Source 11: always-on regional diversity
 
                 genreTask,
-                directorTask,
-                actorTask,
+                Task.WhenAll(directorTasks),
+                Task.WhenAll(actorTasks),
                 trendingTask,
                 popularTask
             ).ConfigureAwait(false);
@@ -600,6 +602,9 @@ public class TmdbController : ControllerBase
             var (recentGenre, recentLang) = ProfileService?.GetRecentInterestWeights(profile)
                 ?? (new System.Collections.Generic.Dictionary<int, double>(),
                     new System.Collections.Generic.Dictionary<string, double>());
+
+            int foreignRecent = profile.RecentWatches
+                .Count(w => w.WatchedAt >= DateTime.UtcNow.AddDays(-7) && w.Language != "en");
 
             // Max raw recency score across genres (used to normalise the bonus)
             double maxGenreRecency = recentGenre.Count > 0 ? recentGenre.Values.Max() : 1.0;
@@ -639,18 +644,6 @@ public class TmdbController : ControllerBase
                     }
                 }
 
-                // Language affinity — boosted log-normalised × 55.0
-                // Recency bonus: up to +20 pts if the user has watched this language very recently
-                // These high multipliers ensure that if a person watches mostly regional films
-                // (e.g. Malayalam), those movies dominate Tier 1 recommendations without being exclusive.
-                if (m.TryGetProperty("original_language", out var langProp))
-                {
-                    var lang = langProp.GetString() ?? "en";
-                    score += NW(profile.LanguageWeights.GetValueOrDefault(lang)) * 35.0; // Dominant weight (tuned down from 55)
-                    if (recentLang.TryGetValue(lang, out var lr))
-                        score += (lr / maxLangRecency) * 15.0; // Strong recency signal (tuned down from 20)
-                }
-
                 // Dismissed genre penalty — subtract from score to suppress similar future picks
                 if (m.TryGetProperty("genre_ids", out var penaltyGenreArr))
                 {
@@ -669,19 +662,40 @@ public class TmdbController : ControllerBase
                 if (m.TryGetProperty("vote_average", out var vaProp) && vaProp.TryGetDouble(out va))
                     score += va * 7.0;
 
-                // Popularity (capped at 100 → max 60 pts)
+                // Popularity (logarithmic curve max ~50 pts for pop 3000+)
                 double pop = 0;
                 if (m.TryGetProperty("popularity", out var popProp) && popProp.TryGetDouble(out pop))
-                    score += Math.Min(pop, 100) * 0.6;
+                    score += Math.Log10(1.0 + pop) * 15.0;
 
-                // Recency bonus/penalty (gentle nudge only — classics still surface via quality)
+                // Recency bonus/penalty (continuous decay curve)
                 if (m.TryGetProperty("release_date", out var rdProp) &&
                     DateTime.TryParse(rdProp.GetString(), out var releaseDate))
                 {
                     var yearsOld = (today - releaseDate).TotalDays / 365.25;
-                    if (yearsOld <= 2) score += 10;
-                    else if (yearsOld > 10) score -= 6;
+                    double recencyBonus = 15.0 - (yearsOld * 1.5);
+                    recencyBonus = Math.Max(recencyBonus, -8.0); // floor: don't punish classics too hard
+                    score += recencyBonus;
                 }
+
+                // Language affinity — multiplicative modifier at the end
+                // Dynamic floor based on recent foreign film watches
+                string lang = m.TryGetProperty("original_language", out var langProp) ? (langProp.GetString() ?? "en") : "en";
+                
+                double maxLangW = profile.LanguageWeights.Values.DefaultIfEmpty(1).Max();
+                double langW = profile.LanguageWeights.GetValueOrDefault(lang);
+                
+                double langFloor = foreignRecent >= 5 ? 0.70
+                                 : foreignRecent >= 3 ? 0.60
+                                 :                      0.40;
+                                 
+                double langModifier = langFloor + (1.0 - langFloor) * (langW / Math.Max(maxLangW, 0.01));
+                
+                if (recentLang.TryGetValue(lang, out var lr))
+                    langModifier += (lr / maxLangRecency) * 0.15;
+                    
+                langModifier = Math.Min(langModifier, 1.15); // max 15% boost for top recent language
+
+                score = score * langModifier;
 
                 return (movieId, score, element: m, hasTopGenre, va, pop);
             })
@@ -719,6 +733,63 @@ public class TmdbController : ControllerBase
                     return true;
                 }).ToList();
             }
+
+            // ── Second-Pass Scoring (Keywords/Micro-genres) ─────────────────────────────
+            // To stay within TMDB rate limits, we only fetch keywords for the highest
+            // scoring candidates from the first pass (~top 100), rather than all 200+ candidates.
+            var topCandidates = allScored.Take(100).ToList();
+            var keywordBonuses = new System.Collections.Concurrent.ConcurrentDictionary<int, double>();
+            
+            var keywordTasks = topCandidates.Select(async candidate =>
+            {
+                try
+                {
+                    double keywordBonus = 0;
+                    var kwUrl = $"{TmdbBaseUrl}/movie/{candidate.movieId}/keywords?api_key={apiKey}";
+                    var kwRes = await client.GetAsync(kwUrl).ConfigureAwait(false);
+                    if (kwRes.IsSuccessStatusCode)
+                    {
+                        using var kwDoc = JsonDocument.Parse(await kwRes.Content.ReadAsStringAsync().ConfigureAwait(false));
+                        if (kwDoc.RootElement.TryGetProperty("keywords", out var kwArr))
+                        {
+                            foreach (var kw in kwArr.EnumerateArray())
+                            {
+                                if (kw.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var kwId))
+                                {
+                                    if (profile.KeywordWeights.TryGetValue(kwId, out var weight))
+                                    {
+                                        keywordBonus += NW(weight) * 1.5;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (keywordBonus > 0)
+                    {
+                        keywordBonuses[candidate.movieId] = keywordBonus;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[UpcomingMovies] TMDB keyword fetch failed for scoring {TmdbId}", candidate.movieId);
+                }
+            }).ToList();
+
+            await Task.WhenAll(keywordTasks).ConfigureAwait(false);
+
+            // Apply bonuses and re-sort
+            for (int i = 0; i < allScored.Count; i++)
+            {
+                if (keywordBonuses.TryGetValue(allScored[i].movieId, out var bonus))
+                {
+                    var item = allScored[i];
+                    item.score += bonus;
+                    allScored[i] = item;
+                }
+            }
+            allScored = allScored.OrderByDescending(x => x.score).ToList();
+
 
             // ── 3-tier diversity slot allocation ───────────────────────────────────────────
             // Tier 1: 30 top-scored picks (any genre)  — represents the user's core taste

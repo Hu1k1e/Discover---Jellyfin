@@ -1799,4 +1799,37 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 ---
 
 **Current Version: v1.0.87**
+
+---
+
+## Phase 63 — Recommendation Engine Overhaul (v1.0.88)
+
+### Root Cause / Requirement
+- The recommendation engine relied heavily on simple additive weights for genres and languages, which led to a strong bias toward English language content ("English override") and broad genre matching rather than nuanced personal taste.
+- Popularity caps and recency tiering resulted in "cliffs", pushing mediocre new movies above classics.
+- Flat source bonuses for directors and actors did not accurately represent a user's true affinity.
+- No penalty existed for abandoning a movie mid-watch.
+- The system needed finer-grained matching through micro-tags/keywords to offer Netflix-style niche recommendations (e.g. "cyberpunk", "heist").
+
+### Fix
+- **Language Multiplicative Scoring:** Transitioned language weight from an additive bonus to a multiplicative coefficient (0.40x to 1.15x) with a dynamic floor based on the user's recent consumption of foreign films. 
+- **Continuous Decay Curves:** Replaced hardcoded tiered bonuses with a logarithmic curve for popularity `Math.Log10` and a continuous time-decay curve `15.0 - (yearsOld * 1.5)` for recency.
+- **Dynamic Source Bonuses:** Scaled director and actor bonuses proportionally to the user's actual normalized weights instead of providing a flat +25/+20 bonus.
+- **Implicit Feedback (Watch Percentage):** Tapped into Jellyfin playback reporting to extract the watch percentage, yielding a multiplier from `-0.5x` (abandoned) to `1.2x` (loved it), which modifies how strongly genres, directors, and actors are credited upon watch completion. Applied retroactively to the Profile Sync Task.
+- **TMDB Keywords:** Introduced tracking for TMDB `keywords`. Added a new parallel TMDB API call to fetch keywords for watched movies, storing weights recursively. Implemented a two-pass scoring loop, fetching and evaluating keyword bonuses *only* for the top 100 first-pass candidates to adhere to TMDB API rate-limiting strictures.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `TmdbController.cs` | Adjusted scoring formulas (popularity log, continuous recency). Transformed language weighting to a multiplicative modifier. Added dynamic multiplier parameters to candidate discovery. Orchestrated two-pass scoring for ~top 100 candidates to fetch and weigh TMDB keywords dynamically. |
+| `UserProfileData.cs` | Created `KeywordWeights` and modified `WatchEntry` to contain `WatchPercentage` and `KeywordIds`. |
+| `UserProfileService.cs` | Computed implicit feedback multipliers based on watch percentage and adjusted corresponding baseline weight alterations. Added full tracking and decay processes for TMDB `keywords`. |
+| `UserDataSavedConsumer.cs` | Calculated and passed actual playback position / runtime ticks upon watch events. Generated a third HTTP request step to dynamically pull the associated item's keywords for profile ingestion. |
+| `SyncProfilesTask.cs` | Extended caching to pull and batch TMDB keywords concurrently. Analyzed historical watchlist/watch events against runtime ticks to backfill watch percentages accurately. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.88.0 |
+
+---
+
+**Current Version: v1.0.88**
 

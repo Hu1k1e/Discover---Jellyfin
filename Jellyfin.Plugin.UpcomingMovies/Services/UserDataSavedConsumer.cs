@@ -59,13 +59,22 @@ public class UserDataSavedConsumer
 
         if (e.UserData.Played)
         {
+            double watchPercentage = 1.0;
+            if (movie.RunTimeTicks > 0)
+            {
+                if (e.UserData.PlaybackPositionTicks == 0)
+                    watchPercentage = 1.0;
+                else
+                    watchPercentage = (double)e.UserData.PlaybackPositionTicks / movie.RunTimeTicks;
+            }
+            
             // Full watch signal — strongest taste indicator, triggers decay of old weights
-            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: false));
+            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, watchPercentage, isWatchlist: false));
         }
         else if (e.UserData.Likes == true)
         {
             // Watchlist signal — user bookmarked this movie (our /Rating?Likes=true call)
-            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, isWatchlist: true));
+            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, 1.0, isWatchlist: true));
         }
     }
 
@@ -77,10 +86,11 @@ public class UserDataSavedConsumer
     /// to "en". A user who watches Malayalam movies should accumulate LanguageWeights["ml"],
     /// not LanguageWeights["en"], so that the recommendation engine can surface regional content.
     /// </summary>
-    private async Task FetchDetailsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds, bool isWatchlist)
+    private async Task FetchDetailsAndUpdateAsync(string userId, int tmdbId, List<int> genreIds, double watchPercentage, bool isWatchlist)
     {
         var directors = new List<int>();
         var actors    = new List<int>();
+        var keywords  = new List<int>();
         var language  = "en"; // fallback only — overwritten by TMDB response below
 
         try
@@ -157,6 +167,33 @@ public class UserDataSavedConsumer
                 {
                     _logger.LogWarning(ex, "[UpcomingMovies] TMDB credits fetch failed for {TmdbId}", tmdbId);
                 }
+
+                // ── Fetch 3: Keywords for micro-genres ──────────────────────────
+                try
+                {
+                    var keywordsUrl = $"{TmdbBaseUrl}/movie/{tmdbId}/keywords?api_key={apiKey}";
+                    var keywordsRes = await client.GetAsync(keywordsUrl).ConfigureAwait(false);
+                    if (keywordsRes.IsSuccessStatusCode)
+                    {
+                        var keywordsJson = await keywordsRes.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        using var keywordsDoc = JsonDocument.Parse(keywordsJson);
+
+                        if (keywordsDoc.RootElement.TryGetProperty("keywords", out var kwArr))
+                        {
+                            foreach (var kw in kwArr.EnumerateArray())
+                            {
+                                if (kw.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out var kwId))
+                                {
+                                    keywords.Add(kwId);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[UpcomingMovies] TMDB keywords fetch failed for {TmdbId}", tmdbId);
+                }
             }
         }
         catch (Exception ex)
@@ -170,11 +207,11 @@ public class UserDataSavedConsumer
 
         if (isWatchlist)
         {
-            _profileService.UpdateWithWatchlist(userId, tmdbId, genreIds, language, directors, actors);
+            _profileService.UpdateWithWatchlist(userId, tmdbId, genreIds, language, directors, actors, keywords);
         }
         else
         {
-            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors);
+            _profileService.UpdateWithWatch(userId, tmdbId, genreIds, language, directors, actors, keywords, watchPercentage);
         }
     }
 }

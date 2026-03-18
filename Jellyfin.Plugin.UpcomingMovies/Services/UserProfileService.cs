@@ -116,7 +116,9 @@ public class UserProfileService
         IEnumerable<int> genreIds,
         string language,
         IEnumerable<int> directorTmdbIds,
-        IEnumerable<int> actorTmdbIds)
+        IEnumerable<int> actorTmdbIds,
+        IEnumerable<int> keywordTmdbIds,
+        double watchPercentage = 1.0)
     {
         var profile = GetProfile(userId);
 
@@ -129,32 +131,45 @@ public class UserProfileService
         // Apply exponential decay to all existing weights so old preferences fade naturally
         DecayAllWeights(profile);
 
+        double weightChange = BaseWatchWeight * (
+              watchPercentage >= 0.9 ? 1.2
+            : watchPercentage >= 0.5 ? 1.0
+            : watchPercentage >= 0.2 ? 0.3
+            :                         -0.5);
+
         var gList = genreIds.ToList();
         var dList = directorTmdbIds.ToList();
         var aList = actorTmdbIds.ToList();
+        var kList = keywordTmdbIds.ToList();
 
         // Genre weights (1× base)
         foreach (var g in gList)
         {
-            profile.GenreWeights[g] = profile.GenreWeights.GetValueOrDefault(g) + BaseWatchWeight;
+            profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
+        }
+
+        // Keyword weights (1× base)
+        foreach (var k in kList)
+        {
+            profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
         }
 
         // Language weights (1× base)
         if (!string.IsNullOrWhiteSpace(language))
         {
-            profile.LanguageWeights[language] = profile.LanguageWeights.GetValueOrDefault(language) + BaseWatchWeight;
+            profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
         }
 
         // Director weights (2× — strongest taste signal)
         foreach (var d in dList)
         {
-            profile.DirectorWeights[d] = profile.DirectorWeights.GetValueOrDefault(d) + (BaseWatchWeight * 2);
+            profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
         }
 
         // Actor weights (1× base)
         foreach (var a in aList.Take(5)) // cap to top-billed 5
         {
-            profile.ActorWeights[a] = profile.ActorWeights.GetValueOrDefault(a) + BaseWatchWeight;
+            profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
         }
 
         // Record to watch history (newest first, capped at 200)
@@ -163,7 +178,9 @@ public class UserProfileService
             TmdbId = tmdbId,
             WatchedAt = DateTime.UtcNow,
             GenreIds = gList,
-            Language = language ?? "en"
+            KeywordIds = kList,
+            Language = language ?? "en",
+            WatchPercentage = watchPercentage
         });
 
         if (profile.RecentWatches.Count > 200)
@@ -188,6 +205,16 @@ public class UserProfileService
     /// </summary>
     public List<int> GetTopGenres(UserProfileData profile, int n = 5)
         => profile.GenreWeights
+            .OrderByDescending(kv => kv.Value)
+            .Take(n)
+            .Select(kv => kv.Key)
+            .ToList();
+
+    /// <summary>
+    /// Returns the top N keyword IDs ranked by weight.
+    /// </summary>
+    public List<int> GetTopKeywords(UserProfileData profile, int n = 10)
+        => profile.KeywordWeights
             .OrderByDescending(kv => kv.Value)
             .Take(n)
             .Select(kv => kv.Key)
@@ -236,7 +263,8 @@ public class UserProfileService
         IEnumerable<int> genreIds,
         string language,
         IEnumerable<int> directorTmdbIds,
-        IEnumerable<int> actorTmdbIds)
+        IEnumerable<int> actorTmdbIds,
+        IEnumerable<int> keywordTmdbIds)
     {
         var profile = GetProfile(userId);
 
@@ -252,10 +280,14 @@ public class UserProfileService
         var gList = genreIds.ToList();
         var dList = directorTmdbIds.ToList();
         var aList = actorTmdbIds.ToList();
+        var kList = keywordTmdbIds.ToList();
 
         // Additive only — no decay so watchlist events don't erode existing taste profile
         foreach (var g in gList)
             profile.GenreWeights[g] = profile.GenreWeights.GetValueOrDefault(g) + wlWeight;
+
+        foreach (var k in kList)
+            profile.KeywordWeights[k] = profile.KeywordWeights.GetValueOrDefault(k) + wlWeight;
 
         if (!string.IsNullOrWhiteSpace(language))
             profile.LanguageWeights[language] = profile.LanguageWeights.GetValueOrDefault(language) + wlWeight;
@@ -340,6 +372,10 @@ public class UserProfileService
         var genreKeys = profile.GenreWeights.Keys.ToList();
         foreach (var k in genreKeys)
             profile.GenreWeights[k] *= DecayFactor;
+
+        var keywordKeys = profile.KeywordWeights.Keys.ToList();
+        foreach (var k in keywordKeys)
+            profile.KeywordWeights[k] *= DecayFactor;
 
         var dirKeys = profile.DirectorWeights.Keys.ToList();
         foreach (var k in dirKeys)

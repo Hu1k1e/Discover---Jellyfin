@@ -11,7 +11,9 @@ public class WatchEntry
     public int TmdbId { get; set; }
     public DateTime WatchedAt { get; set; }
     public List<int> GenreIds { get; set; } = new();
+    public List<int> KeywordIds { get; set; } = new();
     public string Language { get; set; } = "en";
+    public double WatchPercentage { get; set; } = 1.0;
 }
 
 /// <summary>
@@ -25,6 +27,9 @@ public class UserProfileData
 
     /// <summary>TMDB genre ID → accumulated weighted watch count.</summary>
     public Dictionary<int, double> GenreWeights { get; set; } = new();
+
+    /// <summary>TMDB keyword ID → accumulated weighted watch count.</summary>
+    public Dictionary<int, double> KeywordWeights { get; set; } = new();
 
     /// <summary>TMDB person ID → accumulated weighted watch count (directors get 2× bonus).</summary>
     public Dictionary<int, double> DirectorWeights { get; set; } = new();
