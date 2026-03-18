@@ -1829,6 +1829,8 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 | `SyncProfilesTask.cs` | Extended caching to pull and batch TMDB keywords concurrently. Analyzed historical watchlist/watch events against runtime ticks to backfill watch percentages accurately. |
 | `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.88.0 |
 
+*Hotfix added:* Fixed a `double?` to `double` conversion error for `WatchPercentage` calculation in `SyncProfilesTask.cs` and `UserDataSavedConsumer.cs` caused by `movie.RunTimeTicks` being nullable.
+
 ---
 
 **Current Version: v1.0.88**
