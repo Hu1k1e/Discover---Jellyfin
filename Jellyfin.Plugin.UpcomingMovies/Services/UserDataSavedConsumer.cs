@@ -65,7 +65,7 @@ public class UserDataSavedConsumer
                 if (e.UserData.PlaybackPositionTicks == 0)
                     watchPercentage = 1.0;
                 else
-                    watchPercentage = (double)e.UserData.PlaybackPositionTicks / movie.RunTimeTicks;
+                    watchPercentage = (double)e.UserData.PlaybackPositionTicks / movie.RunTimeTicks.Value;
             }
             
             // Full watch signal — strongest taste indicator, triggers decay of old weights

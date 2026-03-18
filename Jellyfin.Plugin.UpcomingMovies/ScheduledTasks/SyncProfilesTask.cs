@@ -98,7 +98,7 @@ public class SyncProfilesTask : IScheduledTask
                 double watchPercentage = 1.0;
                 if (played && movie.RunTimeTicks > 0 && userData?.PlaybackPositionTicks > 0)
                 {
-                    watchPercentage = (double)userData.PlaybackPositionTicks / movie.RunTimeTicks;
+                    watchPercentage = (double)userData.PlaybackPositionTicks / movie.RunTimeTicks.Value;
                 }
 
                 userMovies.Add(new HistoricalEvent
