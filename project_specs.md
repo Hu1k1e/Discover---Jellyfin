@@ -1833,5 +1833,24 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.88**
+## Phase 64 — Config Page UI Update (v1.0.89)
+
+### Root Cause / Requirement
+- The plugin configuration page (`configPage.html`) was still displaying the old additive scoring formula and archaic methods of rendering user weights, failing to render the newly integrated `KeywordWeights` component and the multiplicative `languageModifier`.
+
+### Fix
+- Rebuilt the normalized weighting (`NW(w)`) rendering rules in Javascript to reflect the new `Math.log10(1+x)` C# calculation.
+- Displayed `Keyword Weights` in the UI profile layout correctly and updated `Watch History` to expose `WatchPercentage`.
+- Modified the raw textual scoring formula block to detail the Two-Pass logic in clear text.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Configuration/configPage.html` | Rewrote Javascript `buildProfileTable` data mappers. Created sections for keywords and modified language modifiers to display dynamically. Updated raw text output. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.89.0 |
+
+---
+
+**Current Version: v1.0.89**
 

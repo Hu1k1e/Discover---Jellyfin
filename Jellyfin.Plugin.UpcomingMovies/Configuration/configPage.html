@@ -231,18 +231,28 @@
                 // Language Weights
                 var langRows = Object.entries(profile.languageWeights || {}).map(function(entry) {
                     var code = entry[0], weight = entry[1];
-                    var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
-                    return [code, weight.toFixed(2), nw.toFixed(1), (nw * 55.0).toFixed(1) + ' pts'];
+                    var floor = profile.recentWatches ? (profile.recentWatches.filter(function(w){return w.language && w.language !== 'en';}).length >= 3 ? 0.6 : 0.4) : 0.4;
+                    var maxLangW = Math.max(0.01, Math.max.apply(null, Object.values(profile.languageWeights || {en:1})));
+                    var modifier = floor + (1.0 - floor) * (weight / maxLangW);
+                    return [code, weight.toFixed(2), (modifier).toFixed(2) + 'x', 'Multiplies final score'];
                 });
-                html += buildProfileTable('Language Weights', ['Language', 'Raw Weight', 'Normalized', 'Score Contribution (\u00d755)'], langRows);
+                html += buildProfileTable('Language Weights (Multiplier)', ['Language', 'Raw Weight', 'Dynamic Floor Modifier', 'Effect'], langRows);
 
                 // Genre Weights
                 var genreRows = Object.entries(profile.genreWeights || {}).map(function(entry) {
                     var name = entry[0], weight = entry[1];
-                    var nw = Math.max(0, Math.log10(1 + weight) * 11.6);
-                    return [name, weight.toFixed(2), nw.toFixed(1), (nw * 2.0).toFixed(1) + ' pts'];
+                    var nw = weight > 0 ? Math.log10(1 + weight) : (weight < 0 ? -Math.log10(1 - weight) : 0);
+                    return [name, weight.toFixed(2), nw.toFixed(2), (nw * 2.0).toFixed(1) + ' pts'];
                 });
                 html += buildProfileTable('Genre Weights', ['Genre', 'Raw Weight', 'Normalized', 'Score Contribution (\u00d72)'], genreRows);
+
+                // Keyword Weights
+                var keywordRows = Object.entries(profile.keywordWeights || profile.KeywordWeights || {}).map(function(entry) {
+                    var id = entry[0], weight = entry[1];
+                    var nw = weight > 0 ? Math.log10(1 + weight) : (weight < 0 ? -Math.log10(1 - weight) : 0);
+                    return [id, weight.toFixed(2), nw.toFixed(2), (nw * 1.5).toFixed(1) + ' pts'];
+                });
+                html += buildProfileTable('Keyword Weights', ['Keyword ID', 'Raw Weight', 'Normalized', 'Score Contribution (\u00d71.5)'], keywordRows);
 
                 // Top Directors
                 var dirRows = Object.entries(profile.topDirectors || {}).map(function(e) { return [e[0], e[1].toFixed(2)]; });
@@ -254,9 +264,11 @@
 
                 // Watch History
                 var watchRows = (profile.recentWatches || []).map(function(w) {
-                    return [w.TmdbId || w.tmdbId || '', w.Language || w.language || '', (w.genres || []).join(', '), w.watchedAt || ''];
+                    var pct = w.WatchPercentage || w.watchPercentage;
+                    var pctStr = pct !== undefined ? (pct * 100).toFixed(0) + '%' : '100%';
+                    return [w.TmdbId || w.tmdbId || '', w.Language || w.language || '', (w.genres || []).join(', '), pctStr, w.watchedAt || ''];
                 });
-                html += buildProfileTable('Watch History (' + watchRows.length + ' entries)', ['TMDB ID', 'Language', 'Genre IDs', 'Watched'], watchRows);
+                html += buildProfileTable('Watch History (' + watchRows.length + ' entries)', ['TMDB ID', 'Language', 'Genre IDs', 'Watch %', 'Watched'], watchRows);
 
                 // Watchlist
                 var wlRows = (profile.watchlistTmdbIds || []).map(function(id) { return [id]; });
@@ -274,20 +286,20 @@
                 html += buildProfileTable('Dismissed Genre Penalties', ['Genre', 'Penalty Value', 'Score Impact (\u00d7-3)'], penaltyRows);
 
                 // Scoring Formula
-                var sf = profile.scoringFormula || {};
                 html += '<h4 style="color:#ccc;margin:18px 0 6px;font-size:0.9em;font-weight:600;">Scoring Formula</h4>';
                 html += '<pre style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:14px;color:#bbb;font-size:0.78em;overflow-x:auto;white-space:pre-wrap;margin:0;">'
-                    + 'Score = SourceBonus\n'
-                    + '        (seed: +30 | similar: +25 | genre-discover: +15\n'
-                    + '         director: +' + (sf.directorSourceBonus||25) + ' | actor: +' + (sf.actorSourceBonus||20) + ' | regional-always-on: +10)\n\n'
-                    + '      + \u03a3 genre: NW(genreWeight) \u00d7 ' + (sf.genreMultiplier||2.0) + '  +  genreRecency up to +' + (sf.genreRecencyMax||8) + ' pts\n'
-                    + '      + NW(langWeight) \u00d7 ' + (sf.languageMultiplier||55.0) + '  +  langRecency up to +' + (sf.languageRecencyMax||20) + ' pts\n'
-                    + '      - \u03a3 dismissedGenrePenalty \u00d7 ' + (sf.dismissPenaltyMultiplier||3.0) + '\n'
-                    + '      + voteAverage \u00d7 ' + (sf.voteAverageMultiplier||7.0) + '\n'
-                    + '      + min(popularity, ' + (sf.popularityCap||100) + ') \u00d7 ' + (sf.popularityMultiplier||0.6) + '\n'
-                    + '      + recencyBonus (\u22642yr: +' + (sf.recencyBonus2yr||10) + ' | >10yr: ' + (sf.recencyPenalty10yr||-6) + ')\n\n'
-                    + 'NW(w) = ' + (sf.normalizeFormula || 'log10(1 + w) \u00d7 11.6') + '\n'
-                    + 'Tiers: ' + (sf.tierAllocation || '30 top-score + 20 secondary-genre + 10 wildcard')
+                    + 'Score = SourceBonus (seed: +30 | similar: +25 | genre-discover: +15 | director/actor scaled by affinity)\n\n'
+                    + '      [First Pass]\n'
+                    + '      + \u03a3 genre: NW(genreWeight) \u00d7 2.0  +  genreRecency up to +8.0 pts\n'
+                    + '      - \u03a3 dismissedGenrePenalty \u00d7 3.0\n'
+                    + '      + voteAverage \u00d7 7.0\n'
+                    + '      + log10(popularity + 1) \u00d7 15.0\n'
+                    + '      + recencyBonus \u2192 15.0 - (yearsOld \u00d7 1.5), floor max(-8.0)\n'
+                    + '      \u00d7 languageModifier (base floor 0.40 - 0.70... max 1.15)\n\n'
+                    + '      [Second Pass - Applied to Top 100 candidates only]\n'
+                    + '      + \u03a3 TMDB keywords: NW(keywordWeight) \u00d7 1.5\n\n'
+                    + 'NW(w) = log10(1 + w)\n'
+                    + 'Tiers: 30 top-score + 20 secondary-genre + 10 wildcard'
                     + '</pre>';
 
                 return html;
