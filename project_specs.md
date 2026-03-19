@@ -1852,5 +1852,28 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 
 ---
 
-**Current Version: v1.0.89**
+## Phase 65 — Real-time Watch Percentage via PlaybackStopped (v1.0.90)
+
+### Root Cause / Requirement
+- **Watch history not updating after the last Sync:** `UserDataSaved` with `Played=true` fires only once per movie lifetime (the first time the movie is marked played). A partially-watched movie that hasn't crossed Jellyfin's "played" threshold (e.g., watched 50%) never fires this event at all — so the profile was not being updated.
+- **All watch percentages showing 100%:** When a movie IS fully completed, Jellyfin resets `PlaybackPositionTicks` to 0 in `UserData` (so you can resume from the beginning next time). This meant `(PlaybackPositionTicks / RunTimeTicks)` always evaluated to `0/runtime = 0`, which the code then treated as 100% via its fallback.
+
+### Fix
+- Created **`PlaybackStoppedConsumer.cs`** — subscribes to `ISessionManager.PlaybackStopped`, which fires every time playback stops (mid-way or at the end). This event provides the real, live `PositionTicks` before Jellyfin resets them.
+- The new consumer calculates `watchPercentage = PositionTicks / RunTimeTicks`, applies a minimum 3% threshold to ignore accidental presses, then calls the same `UpdateWithWatch()` path with the correct fraction.
+- **`UserDataSavedConsumer.cs`** — stripped the `Played=true` watch branch entirely. Watch events are now exclusively handled by `PlaybackStoppedConsumer`. The `UserDataSaved` consumer now only handles the watchlist (`Likes=true`) signal.
+- **`Plugin.cs`** — injected `ISessionManager` and wired `sessionManager.PlaybackStopped += _playbackConsumer.OnPlaybackStopped`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/PlaybackStoppedConsumer.cs` | NEW — real-time watch percentage capture via ISessionManager.PlaybackStopped |
+| `Services/UserDataSavedConsumer.cs` | Removed `Played=true` branch, now handles watchlist only |
+| `Plugin.cs` | Added `ISessionManager` injection and `PlaybackStopped` wiring |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.90.0 |
+
+---
+
+**Current Version: v1.0.90**
 

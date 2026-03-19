@@ -5,6 +5,7 @@ using Jellyfin.Plugin.UpcomingMovies.Configuration;
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 using Microsoft.Extensions.Logging;
@@ -19,6 +20,7 @@ namespace Jellyfin.Plugin.UpcomingMovies;
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
 {
     private readonly UserDataSavedConsumer? _consumer;
+    private readonly PlaybackStoppedConsumer? _playbackConsumer;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Plugin"/> class.
@@ -28,6 +30,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
         IApplicationPaths applicationPaths,
         IXmlSerializer xmlSerializer,
         MediaBrowser.Controller.Library.IUserDataManager userDataManager,
+        ISessionManager sessionManager,
         System.Net.Http.IHttpClientFactory httpClientFactory,
         ILoggerFactory loggerFactory)
         : base(applicationPaths, xmlSerializer)
@@ -50,12 +53,23 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
             httpClientFactory,
             loggerFactory.CreateLogger<LibraryItemAddedConsumer>());
 
-        // Create and wire the UserData event consumer (profile updates on watch)
+        // UserDataSaved — used ONLY for watchlist (Likes=true) signals.
+        // Watch signals (Played=true) are handled by PlaybackStopped below so we can
+        // capture the real PositionTicks before Jellyfin resets them to 0.
         _consumer = new UserDataSavedConsumer(
             ProfileService,
             httpClientFactory,
             loggerFactory.CreateLogger<UserDataSavedConsumer>());
         userDataManager.UserDataSaved += _consumer.OnUserDataSaved;
+
+        // PlaybackStopped — the authoritative source for watch percentage.
+        // Fires every time playback ends (mid-way through OR at the end) and provides
+        // the live PositionTicks that Jellyfin hasn't reset yet.
+        _playbackConsumer = new PlaybackStoppedConsumer(
+            ProfileService,
+            httpClientFactory,
+            loggerFactory.CreateLogger<PlaybackStoppedConsumer>());
+        sessionManager.PlaybackStopped += _playbackConsumer.OnPlaybackStopped;
     }
 
     /// <inheritdoc />

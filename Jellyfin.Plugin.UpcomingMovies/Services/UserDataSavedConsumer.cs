@@ -35,9 +35,13 @@ public class UserDataSavedConsumer
 
     /// <summary>
     /// Called by IUserDataManager.UserDataSaved whenever user data changes for a library item.
-    /// Handles two signals:
-    ///   - Played = true  → full watch signal (1× weight + exponential decay on all weights)
-    ///   - Likes = true   → watchlist signal  (0.5× weight, additive only, no decay)
+    /// Handles ONLY the watchlist signal (Likes=true).
+    ///
+    /// NOTE: Watch signals (Played=true) are intentionally NOT handled here.
+    /// They are handled by <see cref="PlaybackStoppedConsumer.OnPlaybackStopped"/> instead,
+    /// because <c>PlaybackStopped</c> provides the real live <c>PositionTicks</c> BEFORE
+    /// Jellyfin resets them to 0 upon completion. This is the only reliable way to compute
+    /// the true watch percentage.
     /// </summary>
     public void OnUserDataSaved(object? sender, UserDataSaveEventArgs e)
     {
@@ -57,21 +61,8 @@ public class UserDataSavedConsumer
             .Where(id => id > 0)
             .ToList();
 
-        if (e.UserData.Played)
-        {
-            double watchPercentage = 1.0;
-            if (movie.RunTimeTicks > 0)
-            {
-                if (e.UserData.PlaybackPositionTicks == 0)
-                    watchPercentage = 1.0;
-                else
-                    watchPercentage = (double)e.UserData.PlaybackPositionTicks / movie.RunTimeTicks.Value;
-            }
-            
-            // Full watch signal — strongest taste indicator, triggers decay of old weights
-            Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, watchPercentage, isWatchlist: false));
-        }
-        else if (e.UserData.Likes == true)
+        // Watchlist signal ONLY — full watch events are handled by PlaybackStoppedConsumer
+        if (e.UserData.Likes == true)
         {
             // Watchlist signal — user bookmarked this movie (our /Rating?Likes=true call)
             Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, 1.0, isWatchlist: true));
