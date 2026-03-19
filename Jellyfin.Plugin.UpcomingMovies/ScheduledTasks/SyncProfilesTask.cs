@@ -87,29 +87,62 @@ public class SyncProfilesTask : IScheduledTask
             foreach (var movie in allMovies)
             {
                 var userData = _userDataManager.GetUserData(user, movie);
-                bool played = userData?.Played == true;
-                bool liked = userData?.Likes == true;
+                bool played  = userData?.Played == true;
+                bool liked   = userData?.Likes == true;
+                long posTicks = userData?.PlaybackPositionTicks ?? 0;
 
-                if (!played && !liked) continue;
+                // Include movies that are:
+                //   (a) fully watched (Played=true)            → watchPercentage = 1.0 (Jellyfin resets ticks on completion)
+                //   (b) partially watched (posTicks > 0)       → real watchPercentage from live ticks
+                //   (c) watchlisted (Liked=true)               → handled as a taste signal below
+                // Previously the gate was `if (!played && !liked) continue` which SILENTLY DROPPED
+                // every partially-watched movie where Played=false and posTicks > 0.
+                bool partialWatch = !played && posTicks > 0 && movie.RunTimeTicks is > 0;
+                if (!played && !liked && !partialWatch) continue;
 
-                if (movie.ProviderIds == null || !movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) || !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
+                if (movie.ProviderIds == null ||
+                    !movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) ||
+                    !int.TryParse(tmdbIdStr, out var tmdbId) || tmdbId <= 0)
                     continue;
 
-                double watchPercentage = 1.0;
-                if (played && movie.RunTimeTicks > 0 && userData?.PlaybackPositionTicks > 0)
+                double watchPercentage;
+                if (played)
                 {
-                    watchPercentage = (double)userData.PlaybackPositionTicks / movie.RunTimeTicks.Value;
+                    // Jellyfin resets PlaybackPositionTicks to 0 when a movie is marked as Played.
+                    // We can't recover the exact stop point, so treat it as fully watched (1.0).
+                    watchPercentage = 1.0;
+                }
+                else if (partialWatch)
+                {
+                    // Live ticks still intact — compute the real fraction watched.
+                    watchPercentage = Math.Clamp((double)posTicks / movie.RunTimeTicks!.Value, 0.0, 1.0);
+
+                    // Ignore trivially short plays (< 3%) — likely accidental button presses
+                    if (watchPercentage < 0.03)
+                    {
+                        _logger.LogDebug(
+                            "[UpcomingMovies] SyncProfiles: Ignoring trivially short partial watch ({Pct:P1}) for TMDB {TmdbId}",
+                            watchPercentage, tmdbId);
+                        continue;
+                    }
+
+                    _logger.LogDebug(
+                        "[UpcomingMovies] SyncProfiles: Partial watch detected — TMDB {TmdbId} at {Pct:P1}",
+                        tmdbId, watchPercentage);
+                }
+                else
+                {
+                    // Liked-only (watchlist), no watch event → dummy percentage, will be treated as watchlist below
+                    watchPercentage = 0.0;
                 }
 
                 userMovies.Add(new HistoricalEvent
                 {
-                    Movie = movie,
-                    TmdbId = tmdbId,
-                    Played = played,
-                    Liked = liked,
-                    // Note: UserData doesn't always have a strict 'date watched' that's easy to pull without IUserDataRepository.
-                    // We'll use LastPlayedDate if available
-                    Date = userData?.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1),
+                    Movie          = movie,
+                    TmdbId         = tmdbId,
+                    Played         = played || partialWatch,   // treat partial-watch as a "watch" event
+                    Liked          = liked,
+                    Date           = userData?.LastPlayedDate ?? DateTime.UtcNow.AddYears(-1),
                     WatchPercentage = watchPercentage
                 });
             }

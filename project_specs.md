@@ -1876,4 +1876,106 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 ---
 
 **Current Version: v1.0.90**
+
+---
+
+## Phase 66 — SyncProfilesTask: Partial-Watch Inclusion Fix (v1.0.91)
+
+### Root Cause
+Two bugs were found in `SyncProfilesTask.cs` that caused partially-watched movies to be invisible in the watch history:
+
+**Bug 1 – Partial watches silently dropped:**
+The gate at line 93 was `if (!played && !liked) continue`. Any movie where `Played=false` but `PlaybackPositionTicks > 0` (i.e. a movie the user stopped partway through) was completely skipped. **These movies never appeared in watch history and never influenced the recommendation profile.**
+
+**Bug 2 – All completed movies showed 100%:**
+The watchPercentage calculation on lines 98-102 was:
+```
+if (played && RunTimeTicks > 0 && PlaybackPositionTicks > 0)
+    percentage = PositionTicks / RunTimeTicks
+```
+But Jellyfin **resets `PlaybackPositionTicks` to 0** when a movie is marked as Played (so users can resume from the beginning). So `PlaybackPositionTicks` was always 0 for completed movies, meaning the `if` branch never executed, and `watchPercentage` always defaulted to `1.0`.
+
+### Fix
+Rewrote the movie-filtering block in `SyncProfilesTask`:
+- Movies with `PlaybackPositionTicks > 0` (partial watches) are now **included** as watch events.
+- For partial watches: `watchPercentage = Math.Clamp(posTicks / RunTimeTicks, 0, 1)` — uses the **live ticks** which haven't been reset yet.
+- For fully-played movies: `watchPercentage = 1.0` (ticks already reset, can't recover exact % — treated as 100%).
+- Partial plays below 3% threshold are ignored (accidental plays).
+- These partial watches are treated as `Played=true` events with the real percentage so `ApplyHistoricalWatch` is called with the correct multiplier.
+
+**After installing v1.0.91:** Run *"Upcoming Movies — Sync User Profiles"* from scheduled tasks. Partially-watched movies will now appear in watch history with the correct percentage.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Fixed partial-watch inclusion and watchPercentage calculation |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.91.0 |
+
+---
+
+**Current Version: v1.0.91**
+
+---
+
+## Phase 67 — PlaybackProgress High-Water Mark Fix (v1.0.92)
+
+### Root Cause
+`PlaybackStoppedConsumer.OnPlaybackStopped` had a dangerous fallback:
+```csharp
+else if (e.PlayedToCompletion)
+    watchPercentage = 1.0;  // ← recorded 100% even for partial stops
+```
+Many Jellyfin clients (Infuse, iOS client, various TV apps) send `PositionTicks = 0` in their `PlaybackStop` request to the server, even when the user stopped partway through. When this happened:
+- `positionTicks = 0` → first branch skipped
+- `PlayedToCompletion = true` (Jellyfin marked the movie played if it was previously seen, OR the client set this flag) → **incorrectly recorded as 100%**
+
+### Fix
+Added a **per-session position cache** using `PlaybackProgress` events, which fire every ~5 seconds during playback and always carry the real current `PositionTicks`. Logic on stop:
+1. Use stop-event's `PositionTicks` if > 0 (most accurate)
+2. Else fall back to the **cached high-water mark** from progress events
+3. Only when both are 0 AND `PlayedToCompletion=true`: record 0.95 (95%) as a safe estimate (avoids claiming 100% for movies the user may not have fully watched)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/PlaybackStoppedConsumer.cs` | Added `ConcurrentDictionary<string, long>` session cache; new `OnPlaybackProgress` handler; stop handler uses cached max position as fallback |
+| `Plugin.cs` | Wired `sessionManager.PlaybackProgress += _playbackConsumer.OnPlaybackProgress` |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.92.0 |
+
+---
+
+**Current Version: v1.0.92**
+
+---
+
+## Phase 68 — UpdateWithWatch De-duplication Fix (v1.0.93)
+
+### Root Cause (the real underlying bug)
+`UserProfileService.UpdateWithWatch` always called `profile.RecentWatches.Insert(0, ...)` — **unconditionally adding a NEW row** for every call, even for the same TMDB ID. This meant:
+
+1. `PlaybackStoppedConsumer` fires when user stops movie at 43% → inserts entry with `WatchPercentage=0.43`
+2. `SyncProfilesTask` runs later → movie has `Played=true` in Jellyfin → `watchPercentage=1.0` → inserts a SECOND entry with `WatchPercentage=1.0`
+3. Watch history shows TWO rows for the same movie, the newer one at 100%
+
+This is why the watch history showed TMDB 1710 appearing twice with 100% even after v1.0.91 and v1.0.92 fixes.
+
+### Fix
+`UpdateWithWatch` now calls `FindIndex(w => w.TmdbId == tmdbId)` before inserting:
+- **If an entry exists:** remove it, then insert a NEW entry at position 0 with `WatchPercentage = Math.Min(existing.WatchPercentage, watchPercentage)` — the **lower** percentage wins, because the real observed stop-position is more accurate than Jellyfin's coarse `Played=true` tag which sets 1.0.
+- **If no entry:** insert normally.
+
+Result: one movie = one row. If `PlaybackStoppedConsumer` already recorded 43%, and `SyncProfilesTask` later tries to record 100%, the final stored value stays 43%.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/UserProfileService.cs` | `UpdateWithWatch` de-duplicates by TmdbId; keeps Math.Min of existing vs new percentage |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.93.0 |
+
+---
+
+**Current Version: v1.0.93**
 
