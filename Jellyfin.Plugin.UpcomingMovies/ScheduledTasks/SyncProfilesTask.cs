@@ -73,6 +73,28 @@ public class SyncProfilesTask : IScheduledTask
             var userIdStr = user.Id.ToString("N");
             _logger.LogInformation("[UpcomingMovies] Processing user {UserName} ({UserId})", user.Username, userIdStr);
 
+            // Before we create a fresh profile, read the EXISTING profile's RecentWatches.
+            // PlaybackStoppedConsumer records real partial-watch percentages here (e.g. 43%).
+            // We MUST preserve these because Jellyfin's UserData only tells us Played=true/false —
+            // once Played=true, it resets PlaybackPositionTicks to 0, losing the real stop point.
+            var existingProfile = Plugin.ProfileService?.GetProfile(userIdStr);
+            var existingWatchPcts = new Dictionary<int, double>();
+            if (existingProfile?.RecentWatches != null)
+            {
+                foreach (var w in existingProfile.RecentWatches)
+                {
+                    // Only preserve entries that are NOT 1.0 — those are the real partial measurements.
+                    // If all we have is 1.0 from a previous sync, there's nothing more specific to keep.
+                    if (!existingWatchPcts.ContainsKey(w.TmdbId) && w.WatchPercentage < 1.0)
+                    {
+                        existingWatchPcts[w.TmdbId] = w.WatchPercentage;
+                    }
+                }
+                _logger.LogDebug(
+                    "[UpcomingMovies] SyncProfiles: Loaded {Count} partial-watch percentages from existing profile for user {User}",
+                    existingWatchPcts.Count, user.Username);
+            }
+
             // Recreate a fresh profile
             var profile = new UserProfileData { UserId = userIdStr };
 
@@ -109,8 +131,19 @@ public class SyncProfilesTask : IScheduledTask
                 if (played)
                 {
                     // Jellyfin resets PlaybackPositionTicks to 0 when a movie is marked as Played.
-                    // We can't recover the exact stop point, so treat it as fully watched (1.0).
-                    watchPercentage = 1.0;
+                    // BUT PlaybackStoppedConsumer may have recorded the real partial percentage
+                    // in the profile before the sync ran.  If we have that, use it.
+                    if (existingWatchPcts.TryGetValue(tmdbId, out var realPct))
+                    {
+                        watchPercentage = realPct;
+                        _logger.LogDebug(
+                            "[UpcomingMovies] SyncProfiles: Using real partial % {Pct:P1} from existing profile for TMDB {TmdbId} (Played=true but keeping real measurement)",
+                            watchPercentage, tmdbId);
+                    }
+                    else
+                    {
+                        watchPercentage = 1.0;
+                    }
                 }
                 else if (partialWatch)
                 {

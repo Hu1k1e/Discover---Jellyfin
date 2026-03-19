@@ -1978,4 +1978,36 @@ Result: one movie = one row. If `PlaybackStoppedConsumer` already recorded 43%, 
 ---
 
 **Current Version: v1.0.93**
+
+---
+
+## Phase 69 — SyncProfilesTask Preserves Real Watch Percentages (v1.0.94)
+
+### Root Cause (the actual overwrite mechanism)
+`SyncProfilesTask.ExecuteAsync()` creates a **brand new empty profile** for each user (line 77: `new UserProfileData { UserId = ... }`), then rebuilds it entirely from Jellyfin's `UserData`. For any movie with `Played=true`, it wrote `watchPercentage = 1.0` because Jellyfin resets `PlaybackPositionTicks` to 0 when marking a movie as played.
+
+**This completely overwrote the real partial percentages** that `PlaybackStoppedConsumer` had recorded earlier:
+
+1. User watches movie to 43% → `PlaybackStoppedConsumer` records 43% ✅
+2. User runs "Sync User Profiles" → creates fresh profile → reads `Played=true` → writes 100% ❌
+3. The 43% entry is gone forever because the profile was rebuilt from scratch
+
+Previous fixes (v1.0.91–v1.0.93) addressed symptoms in the wrong code paths. The `UpdateWithWatch` dedup in v1.0.93 was irrelevant because SyncProfilesTask uses a completely separate method (`ApplyHistoricalWatch`) that starts from a blank profile.
+
+### Fix
+Before creating a fresh profile, SyncProfilesTask now:
+1. **Reads the existing profile's `RecentWatches`** into a lookup dictionary (`existingWatchPcts`)
+2. Only preserves entries with `WatchPercentage < 1.0` — these are the real partial measurements from `PlaybackStoppedConsumer`
+3. When processing a `Played=true` movie, **checks the lookup first** — if a real partial % exists, uses that instead of 1.0
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Reads existing profile before rebuild; preserves real partial watch % for Played=true movies |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.94.0 |
+
+---
+
+**Current Version: v1.0.94**
 
