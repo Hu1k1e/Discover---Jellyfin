@@ -1192,9 +1192,11 @@ public class TmdbController : ControllerBase
             genreWeights      = genresByName,
             topDirectors      = directorsSorted,
             topActors         = actorsSorted,
-            recentWatches     = profile.RecentWatches?.Select(w => new {   // all watches
-                w.TmdbId, w.Language,
+            recentWatches     = profile.RecentWatches?.Select(w => new {
+                w.TmdbId, 
+                w.Language,
                 genres = w.GenreIds,
+                w.WatchPercentage,
                 watchedAt = w.WatchedAt.ToString("yyyy-MM-dd HH:mm")
             }),
             watchlistTmdbIds       = profile.WatchlistTmdbIds,             // full list

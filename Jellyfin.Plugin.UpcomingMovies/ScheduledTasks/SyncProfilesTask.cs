@@ -335,28 +335,35 @@ public class SyncProfilesTask : IScheduledTask
         const double DecayFactor = 0.92;
         const double BaseWatchWeight = 5.0;
 
-        double multiplier = watchPercentage >= 0.9 ? 1.2
-                          : watchPercentage >= 0.5 ? 1.0
-                          : watchPercentage >= 0.2 ? 0.3
-                          :                         -0.5;
-        double weightChange = BaseWatchWeight * multiplier;
+        bool isPartial = watchPercentage < 0.9;
+        bool isAbandoned = isPartial && (DateTime.UtcNow - watchDate).TotalDays <= 7;
+        bool applyAlgorithmNow = !isAbandoned;
 
         if (!profile.WatchedTmdbIds.Contains(tmdbId))
             profile.WatchedTmdbIds.Add(tmdbId);
 
-        // Decay
-        foreach (var k in profile.GenreWeights.Keys.ToList()) profile.GenreWeights[k] *= DecayFactor;
-        foreach (var k in profile.KeywordWeights.Keys.ToList()) profile.KeywordWeights[k] *= DecayFactor;
-        foreach (var k in profile.DirectorWeights.Keys.ToList()) profile.DirectorWeights[k] *= DecayFactor;
-        foreach (var k in profile.ActorWeights.Keys.ToList()) profile.ActorWeights[k] *= DecayFactor;
-        foreach (var k in profile.LanguageWeights.Keys.ToList()) profile.LanguageWeights[k] *= DecayFactor;
+        if (applyAlgorithmNow)
+        {
+            double multiplier = watchPercentage >= 0.9 ? 1.2
+                              : watchPercentage >= 0.5 ? 1.0
+                              : watchPercentage >= 0.2 ? 0.3
+                              :                         -0.5;
+            double weightChange = BaseWatchWeight * multiplier;
 
-        // Add
-        foreach (var g in genreIds) profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
-        foreach (var k in keywords) profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
-        if (!string.IsNullOrWhiteSpace(language)) profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
-        foreach (var d in directors) profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
-        foreach (var a in actors.Take(5)) profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
+            // Decay
+            foreach (var k in profile.GenreWeights.Keys.ToList()) profile.GenreWeights[k] *= DecayFactor;
+            foreach (var k in profile.KeywordWeights.Keys.ToList()) profile.KeywordWeights[k] *= DecayFactor;
+            foreach (var k in profile.DirectorWeights.Keys.ToList()) profile.DirectorWeights[k] *= DecayFactor;
+            foreach (var k in profile.ActorWeights.Keys.ToList()) profile.ActorWeights[k] *= DecayFactor;
+            foreach (var k in profile.LanguageWeights.Keys.ToList()) profile.LanguageWeights[k] *= DecayFactor;
+
+            // Add
+            foreach (var g in genreIds) profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
+            foreach (var k in keywords) profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
+            if (!string.IsNullOrWhiteSpace(language)) profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
+            foreach (var d in directors) profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
+            foreach (var a in actors.Take(5)) profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
+        }
 
         profile.RecentWatches.Insert(0, new WatchEntry
         {
@@ -365,7 +372,8 @@ public class SyncProfilesTask : IScheduledTask
             GenreIds = genreIds,
             KeywordIds = keywords,
             Language = language ?? "en",
-            WatchPercentage = watchPercentage
+            WatchPercentage = watchPercentage,
+            AlgorithmApplied = applyAlgorithmNow
         });
 
         if (profile.RecentWatches.Count > 200)

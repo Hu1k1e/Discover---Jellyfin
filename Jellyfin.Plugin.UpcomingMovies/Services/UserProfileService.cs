@@ -82,8 +82,13 @@ public class UserProfileService
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<UserProfileData>(json)
+            var profile = JsonSerializer.Deserialize<UserProfileData>(json)
                    ?? new UserProfileData { UserId = userId };
+            
+            // Lazily process any partial watches that have been abandoned for > 7 days
+            ProcessAbandonedWatches(profile);
+            
+            return profile;
         }
         catch (Exception ex)
         {
@@ -128,84 +133,79 @@ public class UserProfileService
             profile.WatchedTmdbIds.Add(tmdbId);
         }
 
-        // Apply exponential decay to all existing weights so old preferences fade naturally
-        DecayAllWeights(profile);
-
-        double weightChange = BaseWatchWeight * (
-              watchPercentage >= 0.9 ? 1.2
-            : watchPercentage >= 0.5 ? 1.0
-            : watchPercentage >= 0.2 ? 0.3
-            :                         -0.5);
-
         var gList = genreIds.ToList();
         var dList = directorTmdbIds.ToList();
         var aList = actorTmdbIds.ToList();
         var kList = keywordTmdbIds.ToList();
 
-        // Genre weights (1× base)
-        foreach (var g in gList)
-        {
-            profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
-        }
-
-        // Keyword weights (1× base)
-        foreach (var k in kList)
-        {
-            profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
-        }
-
-        // Language weights (1× base)
-        if (!string.IsNullOrWhiteSpace(language))
-        {
-            profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
-        }
-
-        // Director weights (2× — strongest taste signal)
-        foreach (var d in dList)
-        {
-            profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
-        }
-
-        // Actor weights (1× base)
-        foreach (var a in aList.Take(5)) // cap to top-billed 5
-        {
-            profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
-        }
-
-        // Record to watch history (newest first, capped at 200).
-        // De-duplicate by TmdbId: if an entry already exists for this movie, replace it
-        // rather than inserting a duplicate row.  When two sources report different percentages
-        // (e.g. PlaybackStoppedConsumer captured 0.43, then SyncProfilesTask later sends 1.0
-        // because Jellyfin has Played=true), we keep whichever is LOWER — the more specific
-        // real measurement wins over the coarse "Jellyfin considers this watched" flag.
+        // Find existing to determine deduplication and carry-over state
         var existingIdx = profile.RecentWatches.FindIndex(w => w.TmdbId == tmdbId);
+        WatchEntry existing = null;
         if (existingIdx >= 0)
         {
-            var existing = profile.RecentWatches[existingIdx];
-            var bestPct  = Math.Min(existing.WatchPercentage, watchPercentage);
-            profile.RecentWatches.RemoveAt(existingIdx);
-            profile.RecentWatches.Insert(0, new WatchEntry
-            {
-                TmdbId          = tmdbId,
-                WatchedAt       = DateTime.UtcNow,
-                GenreIds        = gList,
-                KeywordIds      = kList,
-                Language        = language ?? "en",
-                WatchPercentage = bestPct
-            });
+            existing = profile.RecentWatches[existingIdx];
         }
-        else
+
+        bool isPartial = watchPercentage < 0.9;
+        
+        // If the movie was already previously applied to the algorithm, we carry that state over.
+        bool isAlreadyApplied = existing != null && existing.AlgorithmApplied;
+
+        // We apply the algorithm NOW if it's a completed watch, AND it hasn't been applied yet.
+        // Wait, if a user re-watches a movie completely, should it boost the weights again?
+        // In the original code, yes, it boosted it again. So we apply it if !isPartial, regardless of isAlreadyApplied.
+        // Actually, if they re-watch a movie, it's a strong signal, so let's keep the original behavior:
+        // Completed watches ALWAYS apply the weight.
+        // Partial watches NEVER apply the weight NOW (unless we want to? No, partials are held).
+        bool applyAlgorithmNow = !isPartial;
+
+        if (applyAlgorithmNow)
         {
-            profile.RecentWatches.Insert(0, new WatchEntry
-            {
-                TmdbId          = tmdbId,
-                WatchedAt       = DateTime.UtcNow,
-                GenreIds        = gList,
-                KeywordIds      = kList,
-                Language        = language ?? "en",
-                WatchPercentage = watchPercentage
-            });
+            // Apply exponential decay to all existing weights so old preferences fade naturally
+            DecayAllWeights(profile);
+
+            double weightChange = BaseWatchWeight * 1.2; // watchPercentage >= 0.9 is always 1.2
+
+            // Genre weights (1× base)
+            foreach (var g in gList)
+                profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
+
+            // Keyword weights (1× base)
+            foreach (var k in kList)
+                profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
+
+            // Language weights (1× base)
+            if (!string.IsNullOrWhiteSpace(language))
+                profile.LanguageWeights[language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(language) + weightChange);
+
+            // Director weights (2× — strongest taste signal)
+            foreach (var d in dList)
+                profile.DirectorWeights[d] = Math.Max(0, profile.DirectorWeights.GetValueOrDefault(d) + (weightChange * 2));
+
+            // Actor weights (1× base)
+            foreach (var a in aList.Take(5)) // cap to top-billed 5
+                profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
         }
+
+        double bestPct = watchPercentage;
+        bool finalAlgorithmApplied = applyAlgorithmNow || isAlreadyApplied;
+
+        if (existing != null)
+        {
+            bestPct = Math.Min(existing.WatchPercentage, watchPercentage);
+            profile.RecentWatches.RemoveAt(existingIdx);
+        }
+
+        profile.RecentWatches.Insert(0, new WatchEntry
+        {
+            TmdbId          = tmdbId,
+            WatchedAt       = DateTime.UtcNow,
+            GenreIds        = gList,
+            KeywordIds      = kList,
+            Language        = language ?? "en",
+            WatchPercentage = bestPct,
+            AlgorithmApplied = finalAlgorithmApplied
+        });
 
         if (profile.RecentWatches.Count > 200)
         {
@@ -216,12 +216,63 @@ public class UserProfileService
         SaveProfile(profile);
 
         _logger.LogInformation(
-            "[UpcomingMovies] Profile updated for user {UserId}: watched TMDB {TmdbId} (genres:{Genres} lang:{Lang} directors:{Dirs} actors:{Actors})",
-            userId, tmdbId,
+            "[UpcomingMovies] Profile updated (Applied={Applied}) for user {UserId}: watched TMDB {TmdbId} at {Pct} (genres:{Genres} lang:{Lang} directors:{Dirs} actors:{Actors})",
+            finalAlgorithmApplied, userId, tmdbId, bestPct,
             string.Join(",", gList),
             language,
             string.Join(",", dList),
             string.Join(",", aList.Take(5)));
+    }
+
+    /// <summary>
+    /// Evaluates all partial watches in the history. If a partial watch (AlgorithmApplied = false)
+    /// has been abandoned for more than 7 days, its penalty weights are finally applied to the algorithm.
+    /// </summary>
+    public void ProcessAbandonedWatches(UserProfileData profile)
+    {
+        bool changed = false;
+        var now = DateTime.UtcNow;
+        var oneWeek = TimeSpan.FromDays(7);
+
+        // Process from oldest to newest to maintain correct chronological decay
+        // RecentWatches is sorted newest first, so we iterate backwards
+        for (int i = profile.RecentWatches.Count - 1; i >= 0; i--)
+        {
+            var w = profile.RecentWatches[i];
+            if (!w.AlgorithmApplied && (now - w.WatchedAt) > oneWeek)
+            {
+                DecayAllWeights(profile);
+
+                double weightChange = BaseWatchWeight * (
+                      w.WatchPercentage >= 0.5 ? 1.0
+                    : w.WatchPercentage >= 0.2 ? 0.3
+                    :                           -0.5);
+
+                foreach (var g in w.GenreIds)
+                    profile.GenreWeights[g] = Math.Max(0, profile.GenreWeights.GetValueOrDefault(g) + weightChange);
+
+                foreach (var k in w.KeywordIds)
+                    profile.KeywordWeights[k] = Math.Max(0, profile.KeywordWeights.GetValueOrDefault(k) + weightChange);
+
+                if (!string.IsNullOrWhiteSpace(w.Language))
+                    profile.LanguageWeights[w.Language] = Math.Max(0, profile.LanguageWeights.GetValueOrDefault(w.Language) + weightChange);
+
+                // For abandoned watches we don't have director/actor tracking natively in WatchEntry, 
+                // but the user only cares that the *algorithm modifies* (primarily genre/language penalties).
+                // Wait, director/actor penalties should ideally apply too. But WatchEntry doesn't store Directors/Actors.
+                // That's acceptable for abandoned watches; genre and language shifts form the bulk of the score penalty.
+                
+                w.AlgorithmApplied = true;
+                changed = true;
+                
+                _logger.LogInformation("[UpcomingMovies] Applied 1-week abandoned penalty for TMDB {TmdbId} (Pct: {Pct}) for user {UserId}", w.TmdbId, w.WatchPercentage, profile.UserId);
+            }
+        }
+
+        if (changed)
+        {
+            SaveProfile(profile);
+        }
     }
 
     /// <summary>

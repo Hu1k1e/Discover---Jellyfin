@@ -2039,4 +2039,61 @@ This ensures that only trustworthy position data gets recorded. A partial re-wat
 |------|--------|
 | `Services/PlaybackStoppedConsumer.cs` | Added stale-ticks guard: skip when `PlayedToCompletion=false` and computed % >= 0.9 |
 | `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.95.0 |
+
+---
+
+**Current Version: v1.0.96**
+
+---
+
+## Phase 71 — Fix UI Display of WatchPercentage (v1.0.96)
+
+### Root Cause
+Even after `PlaybackStoppedConsumer` correctly handled 10.9% and 43% partial watches, and `Math.Min(existing, new)` correctly deduplicated them without rounding, the UI **still showed 100%** across the board. 
+
+The issue occurred because the `TmdbController` API endpoint (`/tmdb/profile`) was manually mapping `profile.RecentWatches` to an anonymous object that omitted the new `WatchPercentage` property entirely.
+
+When the JavaScript frontend attempted to parse `1.0.95` API responses, `w.watchPercentage` was `undefined`. The parsing logic `var pctStr = pct !== undefined ? (pct * 100).toFixed(0) + '%' : '100%';` natively fallback to `100%` when `pct` was undefined. In other words, the backend worked beautifully, but the plugin configuration page just failed to display it!
+
+### Fix
+Added `w.WatchPercentage` to the anonymous projection in `TmdbController.GetProfile()`.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Api/TmdbController.cs` | Added `w.WatchPercentage` to the `recentWatches` projection |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.96.0 |
+
+---
+
+**Current Version: v1.0.97**
+
+---
+
+## Phase 72 — 1-Week Algorithm Hold for Partial Watches (v1.0.97)
+
+### Root Cause / Requirement
+The user requested that if they abandon a movie midway through (a partial watch), the algorithm (genre/actor weights) should **not** update immediately. The system should "hold" the partial watch for exactly one week to give the user time to finish the movie.
+- If the user finishes the movie within the week, the completed 100% positive modifier applies immediately.
+- If one week passes and the movie is still a partial watch, the penalty modifier is finally calculated and permanently applied to their taste profile.
+- All along, the movie should still appear in "Recent Watches" immediately so they can "Continue Watching".
+
+### Fix
+1. **`UserProfileData.cs`**: Added `public bool AlgorithmApplied { get; set; } = true;` to `WatchEntry`. For existing and completed watches, it defaults to true.
+2. **`UserProfileService.cs`**:
+   - `UpdateWithWatch`: For completed watches (`watchPercentage >= 0.9`), the algorithm applies immediately (`AlgorithmApplied = true`). For partial watches, the system records the movie into `RecentWatches` but **skips** calling `DecayAllWeights` and doesn't add any score adjustments, setting `AlgorithmApplied = false`. If a movie is re-watched and completed, the AlgorithmApplied state carries over correctly.
+   - `ProcessAbandonedWatches(profile)`: A new method that evaluates a profile's history. Any partial watch with `!AlgorithmApplied` older than 7 days triggers an explicit chronological `DecayAllWeights`, followed by the application of the abandoned penalty scores to genres and languages. It then sets `AlgorithmApplied = true` and saves the JSON.
+   - `GetProfile(userId)`: Now dynamically calls `ProcessAbandonedWatches(profile)` immediately after reading the JSON. This guarantees lazy, 100% reliable execution of the 1-week timeout whenever Jellyfin interacts with the user's data.
+3. **`SyncProfilesTask.cs`**: Modified `ApplyHistoricalWatch` to replicate the logic so that `Sync User Profiles` properly obeys the exact same 7-day chronological ruleset when doing background rebuilds from Jellyfin's database.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Model/UserProfileData.cs` | Added `AlgorithmApplied` boolean. |
+| `Services/UserProfileService.cs` | Bypassed immediate algorithm application for partial plays; inject lazy evaluation logic on fetch. |
+| `ScheduledTasks/SyncProfilesTask.cs` | Aligned historical chronological rebuild loop to match the active logic hold constraints. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.97.0 |
+
 

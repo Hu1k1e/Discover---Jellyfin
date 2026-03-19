@@ -14,6 +14,7 @@ public class WatchEntry
     public List<int> KeywordIds { get; set; } = new();
     public string Language { get; set; } = "en";
     public double WatchPercentage { get; set; } = 1.0;
+    public bool AlgorithmApplied { get; set; } = true;
 }
 
 /// <summary>
