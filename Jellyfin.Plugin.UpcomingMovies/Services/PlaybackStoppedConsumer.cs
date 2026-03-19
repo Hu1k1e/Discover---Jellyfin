@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.Extensions.Logging;
 
@@ -14,13 +15,14 @@ namespace Jellyfin.Plugin.UpcomingMovies.Services;
 /// Handles Jellyfin <see cref="ISessionManager.PlaybackStopped"/> events to record
 /// the real watch percentage for every movie the user partially or fully watches.
 ///
-/// Why this is needed:
-///   - <c>UserDataSaved</c> with <c>Played = true</c> fires exactly once per movie lifetime —
-///     never for partial-watch sessions that haven't reached the "played" threshold.
-///   - When a movie IS fully completed, Jellyfin resets <c>PlaybackPositionTicks</c> to 0
-///     in UserData, so the percentage can't be recovered from there afterwards.
-///   - <c>PlaybackStopped</c> fires every time playback stops (user exits, seeks to end, etc.)
-///     and provides <c>e.PlaybackStopInfo.PositionTicks</c> — the real, live position.
+/// Why this is needed instead of UserDataSaved:
+///   - UserDataSaved with Played=true fires exactly once per movie lifetime —
+///     never for partial-watch sessions that haven't crossed Jellyfin's "played" threshold.
+///   - When a movie IS fully completed, Jellyfin resets PlaybackPositionTicks to 0
+///     in UserData (so you can resume from the start), making it impossible to read
+///     the real percentage after the fact.
+///   - PlaybackStopped fires every time the user exits/stops the player and provides
+///     PlaybackPositionTicks — the real, live position — before Jellyfin resets it.
 /// </summary>
 public class PlaybackStoppedConsumer
 {
@@ -30,7 +32,7 @@ public class PlaybackStoppedConsumer
 
     private const string TmdbBaseUrl = "https://api.themoviedb.org/3";
 
-    // Minimum fraction of runtime to bother recording — below 3% is likely accidental play
+    // Minimum fraction of runtime to bother recording — below 3% is likely an accidental press
     private const double MinimumRecordThreshold = 0.03;
 
     public PlaybackStoppedConsumer(
@@ -44,7 +46,7 @@ public class PlaybackStoppedConsumer
     }
 
     /// <summary>
-    /// Subscribed to <see cref="ISessionManager.PlaybackStopped"/>.
+    /// Subscribed to ISessionManager.PlaybackStopped.
     /// Captures the real position ticks and updates the user profile accordingly.
     /// </summary>
     public void OnPlaybackStopped(object? sender, PlaybackStopEventArgs e)
@@ -52,39 +54,48 @@ public class PlaybackStoppedConsumer
         // We only care about movies
         if (e.Item is not Movie movie) return;
 
-        // Need a TMDB ID
+        // Need a TMDB ID to be useful
         if (movie.ProviderIds == null ||
             !movie.ProviderIds.TryGetValue("Tmdb", out var tmdbIdStr) ||
             !int.TryParse(tmdbIdStr, out var tmdbId) ||
             tmdbId <= 0)
             return;
 
-        // Need a valid user
-        var userId = e.Session?.UserId;
-        if (userId == null || userId == Guid.Empty) return;
-        var userIdStr = userId.Value.ToString("N");
+        // Session carries the UserId
+        var session = e.Session;
+        if (session == null) return;
+        var userId = session.UserId.ToString("N");
 
-        // Calculate watch percentage from the LIVE position ticks provided by PlaybackStopped
-        double watchPercentage = 1.0;
-        long positionTicks = e.PlaybackStopInfo?.PositionTicks ?? 0;
+        // Calculate watch percentage from the LIVE PlaybackPositionTicks in the event args.
+        // These are NOT yet reset by Jellyfin, unlike UserData.PlaybackPositionTicks.
+        double watchPercentage;
+        long positionTicks = e.PlaybackPositionTicks ?? 0;
 
         if (movie.RunTimeTicks is > 0 && positionTicks > 0)
         {
             watchPercentage = (double)positionTicks / movie.RunTimeTicks.Value;
             watchPercentage = Math.Clamp(watchPercentage, 0.0, 1.0);
         }
-        else if (e.PlaybackStopInfo?.PlayedToCompletion == true)
+        else if (e.PlayedToCompletion)
         {
-            // Fallback: if Jellyfin says it was played to completion, treat as 100%
+            // Fallback: movie played to the end but position wasn't reported
             watchPercentage = 1.0;
         }
+        else
+        {
+            // No position data at all — skip
+            _logger.LogDebug(
+                "[UpcomingMovies] PlaybackStopped: No position data for TMDB {TmdbId}, skipping.",
+                tmdbId);
+            return;
+        }
 
-        // Skip accidental presses / very short plays
+        // Skip trivially short plays — likely accidental (< 3%)
         if (watchPercentage < MinimumRecordThreshold)
         {
             _logger.LogDebug(
-                "[UpcomingMovies] PlaybackStopped: Ignoring trivially short play (< {Threshold:P0}) for TMDB {TmdbId}",
-                MinimumRecordThreshold, tmdbId);
+                "[UpcomingMovies] PlaybackStopped: Ignoring trivially short play ({Pct:P1}) for TMDB {TmdbId}",
+                watchPercentage, tmdbId);
             return;
         }
 
@@ -94,10 +105,10 @@ public class PlaybackStoppedConsumer
             .ToList();
 
         _logger.LogInformation(
-            "[UpcomingMovies] PlaybackStopped: user={UserId} tmdb={TmdbId} position={Pos} runtime={Runtime} pct={Pct:P1}",
-            userIdStr, tmdbId, positionTicks, movie.RunTimeTicks, watchPercentage);
+            "[UpcomingMovies] PlaybackStopped: user={UserId} tmdb={TmdbId} pos={Pos} runtime={Runtime} pct={Pct:P1} completed={Completed}",
+            userId, tmdbId, positionTicks, movie.RunTimeTicks, watchPercentage, e.PlayedToCompletion);
 
-        Task.Run(() => FetchDetailsAndUpdateAsync(userIdStr, tmdbId, genreIds, watchPercentage));
+        Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, watchPercentage));
     }
 
     private async Task FetchDetailsAndUpdateAsync(
@@ -174,7 +185,7 @@ public class PlaybackStoppedConsumer
                     _logger.LogWarning(ex, "[UpcomingMovies] PlaybackStopped: TMDB credits failed for {Id}", tmdbId);
                 }
 
-                // 3 — keywords
+                // 3 — keywords (micro-genres)
                 try
                 {
                     var url = $"{TmdbBaseUrl}/movie/{tmdbId}/keywords?api_key={apiKey}";
