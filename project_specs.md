@@ -1915,4 +1915,36 @@ Rewrote the movie-filtering block in `SyncProfilesTask`:
 ---
 
 **Current Version: v1.0.91**
+
+---
+
+## Phase 67 — PlaybackProgress High-Water Mark Fix (v1.0.92)
+
+### Root Cause
+`PlaybackStoppedConsumer.OnPlaybackStopped` had a dangerous fallback:
+```csharp
+else if (e.PlayedToCompletion)
+    watchPercentage = 1.0;  // ← recorded 100% even for partial stops
+```
+Many Jellyfin clients (Infuse, iOS client, various TV apps) send `PositionTicks = 0` in their `PlaybackStop` request to the server, even when the user stopped partway through. When this happened:
+- `positionTicks = 0` → first branch skipped
+- `PlayedToCompletion = true` (Jellyfin marked the movie played if it was previously seen, OR the client set this flag) → **incorrectly recorded as 100%**
+
+### Fix
+Added a **per-session position cache** using `PlaybackProgress` events, which fire every ~5 seconds during playback and always carry the real current `PositionTicks`. Logic on stop:
+1. Use stop-event's `PositionTicks` if > 0 (most accurate)
+2. Else fall back to the **cached high-water mark** from progress events
+3. Only when both are 0 AND `PlayedToCompletion=true`: record 0.95 (95%) as a safe estimate (avoids claiming 100% for movies the user may not have fully watched)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/PlaybackStoppedConsumer.cs` | Added `ConcurrentDictionary<string, long>` session cache; new `OnPlaybackProgress` handler; stop handler uses cached max position as fallback |
+| `Plugin.cs` | Wired `sessionManager.PlaybackProgress += _playbackConsumer.OnPlaybackProgress` |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.92.0 |
+
+---
+
+**Current Version: v1.0.92**
 

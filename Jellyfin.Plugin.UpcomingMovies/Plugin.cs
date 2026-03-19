@@ -65,11 +65,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
         // PlaybackStopped — the authoritative source for watch percentage.
         // Fires every time playback ends (mid-way through OR at the end) and provides
         // the live PositionTicks that Jellyfin hasn't reset yet.
+        // PlaybackProgress — fires every ~5 seconds with the current position.
+        // Used as a fallback when some clients send positionTicks=0 in their stop request.
         _playbackConsumer = new PlaybackStoppedConsumer(
             ProfileService,
             httpClientFactory,
             loggerFactory.CreateLogger<PlaybackStoppedConsumer>());
-        sessionManager.PlaybackStopped += _playbackConsumer.OnPlaybackStopped;
+        sessionManager.PlaybackProgress += _playbackConsumer.OnPlaybackProgress;
+        sessionManager.PlaybackStopped  += _playbackConsumer.OnPlaybackStopped;
     }
 
     /// <inheritdoc />
