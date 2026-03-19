@@ -172,16 +172,40 @@ public class UserProfileService
             profile.ActorWeights[a] = Math.Max(0, profile.ActorWeights.GetValueOrDefault(a) + weightChange);
         }
 
-        // Record to watch history (newest first, capped at 200)
-        profile.RecentWatches.Insert(0, new WatchEntry
+        // Record to watch history (newest first, capped at 200).
+        // De-duplicate by TmdbId: if an entry already exists for this movie, replace it
+        // rather than inserting a duplicate row.  When two sources report different percentages
+        // (e.g. PlaybackStoppedConsumer captured 0.43, then SyncProfilesTask later sends 1.0
+        // because Jellyfin has Played=true), we keep whichever is LOWER — the more specific
+        // real measurement wins over the coarse "Jellyfin considers this watched" flag.
+        var existingIdx = profile.RecentWatches.FindIndex(w => w.TmdbId == tmdbId);
+        if (existingIdx >= 0)
         {
-            TmdbId = tmdbId,
-            WatchedAt = DateTime.UtcNow,
-            GenreIds = gList,
-            KeywordIds = kList,
-            Language = language ?? "en",
-            WatchPercentage = watchPercentage
-        });
+            var existing = profile.RecentWatches[existingIdx];
+            var bestPct  = Math.Min(existing.WatchPercentage, watchPercentage);
+            profile.RecentWatches.RemoveAt(existingIdx);
+            profile.RecentWatches.Insert(0, new WatchEntry
+            {
+                TmdbId          = tmdbId,
+                WatchedAt       = DateTime.UtcNow,
+                GenreIds        = gList,
+                KeywordIds      = kList,
+                Language        = language ?? "en",
+                WatchPercentage = bestPct
+            });
+        }
+        else
+        {
+            profile.RecentWatches.Insert(0, new WatchEntry
+            {
+                TmdbId          = tmdbId,
+                WatchedAt       = DateTime.UtcNow,
+                GenreIds        = gList,
+                KeywordIds      = kList,
+                Language        = language ?? "en",
+                WatchPercentage = watchPercentage
+            });
+        }
 
         if (profile.RecentWatches.Count > 200)
         {

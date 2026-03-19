@@ -1947,4 +1947,35 @@ Added a **per-session position cache** using `PlaybackProgress` events, which fi
 ---
 
 **Current Version: v1.0.92**
+
+---
+
+## Phase 68 — UpdateWithWatch De-duplication Fix (v1.0.93)
+
+### Root Cause (the real underlying bug)
+`UserProfileService.UpdateWithWatch` always called `profile.RecentWatches.Insert(0, ...)` — **unconditionally adding a NEW row** for every call, even for the same TMDB ID. This meant:
+
+1. `PlaybackStoppedConsumer` fires when user stops movie at 43% → inserts entry with `WatchPercentage=0.43`
+2. `SyncProfilesTask` runs later → movie has `Played=true` in Jellyfin → `watchPercentage=1.0` → inserts a SECOND entry with `WatchPercentage=1.0`
+3. Watch history shows TWO rows for the same movie, the newer one at 100%
+
+This is why the watch history showed TMDB 1710 appearing twice with 100% even after v1.0.91 and v1.0.92 fixes.
+
+### Fix
+`UpdateWithWatch` now calls `FindIndex(w => w.TmdbId == tmdbId)` before inserting:
+- **If an entry exists:** remove it, then insert a NEW entry at position 0 with `WatchPercentage = Math.Min(existing.WatchPercentage, watchPercentage)` — the **lower** percentage wins, because the real observed stop-position is more accurate than Jellyfin's coarse `Played=true` tag which sets 1.0.
+- **If no entry:** insert normally.
+
+Result: one movie = one row. If `PlaybackStoppedConsumer` already recorded 43%, and `SyncProfilesTask` later tries to record 100%, the final stored value stays 43%.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/UserProfileService.cs` | `UpdateWithWatch` de-duplicates by TmdbId; keeps Math.Min of existing vs new percentage |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.93.0 |
+
+---
+
+**Current Version: v1.0.93**
 
