@@ -2009,5 +2009,34 @@ Before creating a fresh profile, SyncProfilesTask now:
 
 ---
 
-**Current Version: v1.0.94**
+**Current Version: v1.0.95**
+
+---
+
+## Phase 70 — PlaybackStoppedConsumer: Reject Stale Position Ticks for Re-watched Movies (v1.0.95)
+
+### Root Cause
+When a movie has `Played=true` in Jellyfin (from a previous completed watch), the session/client reports `PlaybackPositionTicks` equal to the full `RunTimeTicks` — even when the user stops the movie midway through a **re-watch**. The `PlaybackProgress` events also cache this stale full-runtime value. This causes:
+
+```
+positionTicks = RunTimeTicks  →  watchPercentage = RunTimeTicks / RunTimeTicks = 1.0 (100%)
+```
+
+The user stops at 43% but the plugin records 100%.
+
+### Fix
+After computing `watchPercentage` from `positionTicks / RunTimeTicks`, check `PlayedToCompletion`:
+
+- **If `PlayedToCompletion = false` AND `watchPercentage >= 0.9`**: the ticks data is unreliable (stale from a previous completed session). **Skip the event** — we have no reliable way to determine the real stop position.
+- **If `PlayedToCompletion = true` with no position data**: use 0.95 estimate (unchanged from v1.0.92).
+- **If `PlayedToCompletion = false` with no position data**: skip entirely.
+
+This ensures that only trustworthy position data gets recorded. A partial re-watch where the client sends stale ticks is silently ignored rather than falsely recorded as 100%.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Services/PlaybackStoppedConsumer.cs` | Added stale-ticks guard: skip when `PlayedToCompletion=false` and computed % >= 0.9 |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.95.0 |
 

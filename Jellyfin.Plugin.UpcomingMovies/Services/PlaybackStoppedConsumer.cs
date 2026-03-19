@@ -133,6 +133,28 @@ public class PlaybackStoppedConsumer
         {
             watchPercentage = (double)positionTicks / movie.RunTimeTicks.Value;
             watchPercentage = Math.Clamp(watchPercentage, 0.0, 1.0);
+
+            // ── CRITICAL FIX for re-watched movies ──────────────────────────
+            // When a movie has Played=true in Jellyfin (from a previous watch),
+            // many clients and Jellyfin's own session tracking report the
+            // PlaybackPositionTicks as the full RunTimeTicks — even when the
+            // user stopped the movie midway through a RE-watch.  The Progress
+            // events also cache the stale full-runtime value.  This causes
+            // positionTicks / RunTimeTicks = 1.0 (100%) for a movie the user
+            // actually quit at, say, 43%.
+            //
+            // Fix: when PlayedToCompletion=false (user manually stopped), the
+            // computed percentage should NEVER be >= 0.9.  If it is, the ticks
+            // are untrustworthy.  Skip the event entirely — we have no reliable
+            // way to determine the real stop position.
+            if (!e.PlayedToCompletion && watchPercentage >= 0.9)
+            {
+                _logger.LogInformation(
+                    "[UpcomingMovies] PlaybackStopped: TMDB {TmdbId} — computed {Pct:P1} but PlayedToCompletion=false. " +
+                    "Position ticks are likely stale from a previous completed session. Skipping unreliable data.",
+                    tmdbId, watchPercentage);
+                return;
+            }
         }
         else if (e.PlayedToCompletion && positionTicks == 0)
         {
@@ -146,9 +168,18 @@ public class PlaybackStoppedConsumer
                 "[UpcomingMovies] PlaybackStopped: TMDB {TmdbId} — no position data but PlayedToCompletion=true; using 95% estimate.",
                 tmdbId);
         }
+        else if (!e.PlayedToCompletion && positionTicks == 0)
+        {
+            // No position data and NOT completed — user stopped very early or
+            // client didn't report position.  Skip — we have nothing to record.
+            _logger.LogDebug(
+                "[UpcomingMovies] PlaybackStopped: No usable position data for TMDB {TmdbId}, skipping.",
+                tmdbId);
+            return;
+        }
         else
         {
-            // No position data at all and not marked as completed — skip
+            // Fallback — shouldn't normally reach here
             _logger.LogDebug(
                 "[UpcomingMovies] PlaybackStopped: No usable position data for TMDB {TmdbId}, skipping.",
                 tmdbId);
