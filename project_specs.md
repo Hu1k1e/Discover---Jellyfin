@@ -1876,4 +1876,43 @@ Additionally, the build logs were spammed with `CS1591` (Missing XML comment) wa
 ---
 
 **Current Version: v1.0.90**
+
+---
+
+## Phase 66 — SyncProfilesTask: Partial-Watch Inclusion Fix (v1.0.91)
+
+### Root Cause
+Two bugs were found in `SyncProfilesTask.cs` that caused partially-watched movies to be invisible in the watch history:
+
+**Bug 1 – Partial watches silently dropped:**
+The gate at line 93 was `if (!played && !liked) continue`. Any movie where `Played=false` but `PlaybackPositionTicks > 0` (i.e. a movie the user stopped partway through) was completely skipped. **These movies never appeared in watch history and never influenced the recommendation profile.**
+
+**Bug 2 – All completed movies showed 100%:**
+The watchPercentage calculation on lines 98-102 was:
+```
+if (played && RunTimeTicks > 0 && PlaybackPositionTicks > 0)
+    percentage = PositionTicks / RunTimeTicks
+```
+But Jellyfin **resets `PlaybackPositionTicks` to 0** when a movie is marked as Played (so users can resume from the beginning). So `PlaybackPositionTicks` was always 0 for completed movies, meaning the `if` branch never executed, and `watchPercentage` always defaulted to `1.0`.
+
+### Fix
+Rewrote the movie-filtering block in `SyncProfilesTask`:
+- Movies with `PlaybackPositionTicks > 0` (partial watches) are now **included** as watch events.
+- For partial watches: `watchPercentage = Math.Clamp(posTicks / RunTimeTicks, 0, 1)` — uses the **live ticks** which haven't been reset yet.
+- For fully-played movies: `watchPercentage = 1.0` (ticks already reset, can't recover exact % — treated as 100%).
+- Partial plays below 3% threshold are ignored (accidental plays).
+- These partial watches are treated as `Played=true` events with the real percentage so `ApplyHistoricalWatch` is called with the correct multiplier.
+
+**After installing v1.0.91:** Run *"Upcoming Movies — Sync User Profiles"* from scheduled tasks. Partially-watched movies will now appear in watch history with the correct percentage.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `ScheduledTasks/SyncProfilesTask.cs` | Fixed partial-watch inclusion and watchPercentage calculation |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version/AssemblyVersion to 1.0.91.0 |
+
+---
+
+**Current Version: v1.0.91**
 
