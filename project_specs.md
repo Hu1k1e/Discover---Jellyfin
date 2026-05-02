@@ -2096,4 +2096,28 @@ The user requested that if they abandon a movie midway through (a partial watch)
 | `ScheduledTasks/SyncProfilesTask.cs` | Aligned historical chronological rebuild loop to match the active logic hold constraints. |
 | `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.97.0 |
 
-
+---
+
+## Phase 73: Custom Sidebar Links Config
+**Date:** 2026-05-02
+**Objective:** Add the ability for users to specify custom Native Jellyfin Sidebar Links via the plugin UI.
+
+### Design Details
+The Discover sidebar injection already implements a seamless `<a class="navMenuOption">` DOM injection technique that handles routing via `window.location.hash` or absolute URLs without full page refreshes.
+We needed to expose this to let users place their own custom shortcuts natively.
+
+### Fix
+1. **`PluginConfiguration.cs`**: Defined `CustomSidebarLink` class (`Name`, `Icon`, `Link`) and initialized an array for it in the config file.
+2. **`TmdbController.cs`**: Mapped the saved config array to the `GetPublicConfig` response so the frontend JS can query it.
+3. **`configPage.html`**: Constructed a dynamic javascript-based form inside the Plugin Settings Dashboard to allow adding and removing custom navigation links (with specific fields for Name, Material Icon text, and Target URL).
+4. **`discoverPage.js`**: Iterated through the fetched `customSidebarLinks` and injected them sequentially immediately after the 'Discover' tab inside the left-hand native application drawer.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Configuration/PluginConfiguration.cs` | Added `CustomSidebarLinks` object list. |
+| `Api/TmdbController.cs` | Added link exposure mapping to public endpoint. |
+| `Configuration/configPage.html` | Created dynamic array form editor block. |
+| `Web/discoverPage.js` | Updated `injectNativeNavigation` loop. |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.98.0 |

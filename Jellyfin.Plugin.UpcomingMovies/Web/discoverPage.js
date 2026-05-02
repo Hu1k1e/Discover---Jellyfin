@@ -1954,6 +1954,38 @@
                         if (homeLink && homeLink.nextSibling) menu.insertBefore(link, homeLink.nextSibling);
                         else menu.appendChild(link);
                     }
+
+                    // Inject custom links right after Discover link
+                    var customLinks = config.customSidebarLinks || config.CustomSidebarLinks || [];
+                    var insertAfterElement = link;
+                    customLinks.forEach(function(cLink) {
+                        var customA = document.createElement('a');
+                        customA.className = 'navMenuOption emby-button custom-sidebar-tab';
+                        
+                        var lnkName = cLink.name || cLink.Name || 'Custom Link';
+                        var lnkIcon = cLink.icon || cLink.Icon || 'link';
+                        var lnkUrl  = cLink.link || cLink.Link || '#/home';
+                        
+                        customA.title = lnkName;
+                        var safeIcon = lnkIcon.replace(/</g, '').replace(/>/g, '');
+                        var safeName = lnkName.replace(/</g, '').replace(/>/g, '');
+                        customA.innerHTML = '<span class="navMenuOptionIcon material-icons">' + safeIcon + '</span><span class="navMenuOptionText">' + safeName + '</span>';
+                        
+                        customA.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            var drawer = document.querySelector('.appDrawer-open');
+                            if (drawer) drawer.classList.remove('appDrawer-open');
+                            
+                            if (lnkUrl.startsWith('#')) {
+                                window.location.hash = lnkUrl;
+                            } else {
+                                window.location.href = lnkUrl;
+                            }
+                        });
+                        
+                        insertAfterElement.after(customA);
+                        insertAfterElement = customA;
+                    });
                     
                     window._discoverNavInjected = true;
                 }

@@ -15,6 +15,16 @@ public enum NavPlacement
 }
 
 /// <summary>
+/// A custom link to inject into the sidebar.
+/// </summary>
+public class CustomSidebarLink
+{
+    public string Name { get; set; } = string.Empty;
+    public string Icon { get; set; } = string.Empty;
+    public string Link { get; set; } = string.Empty;
+}
+
+/// <summary>
 /// Plugin configuration for Upcoming Movies &amp; Recommendations.
 /// </summary>
 public class PluginConfiguration : BasePluginConfiguration
@@ -36,6 +46,7 @@ public class PluginConfiguration : BasePluginConfiguration
         ShowUpcomingSection = true;
         ShowRecommendationsSection = true;
         ShowWatchlistSection = true;
+        CustomSidebarLinks = Array.Empty<CustomSidebarLink>();
     }
 
     /// <summary>
@@ -98,4 +109,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Generate one in Jellyfin Dashboard → API Keys.
     /// </summary>
     public string JellyfinLocalApiKey { get; set; }
+
+    /// <summary>
+    /// Gets or sets a list of custom links to inject into the sidebar.
+    /// </summary>
+    public CustomSidebarLink[] CustomSidebarLinks { get; set; }
 }

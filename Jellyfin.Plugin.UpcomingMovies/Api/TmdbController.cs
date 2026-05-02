@@ -948,7 +948,8 @@ public class TmdbController : ControllerBase
                 showRecommendations     = config?.ShowRecommendationsSection ?? true,
                 tmdbConfigured          = !string.IsNullOrWhiteSpace(config?.TmdbApiKey),
                 jellyseerrConfigured    = !string.IsNullOrWhiteSpace(config?.JellyseerrApiKey)
-                                       && !string.IsNullOrWhiteSpace(config?.JellyseerrUrl)
+                                       && !string.IsNullOrWhiteSpace(config?.JellyseerrUrl),
+                customSidebarLinks      = config?.CustomSidebarLinks ?? Array.Empty<CustomSidebarLink>()
             });
         }
         catch (Exception ex)
