@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.UpcomingMovies.Configuration;
 using Jellyfin.Plugin.UpcomingMovies.Model;
 using Jellyfin.Plugin.UpcomingMovies.Services;
 using Microsoft.AspNetCore.Authorization;
