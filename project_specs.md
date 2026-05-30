@@ -2120,4 +2120,39 @@ We needed to expose this to let users place their own custom shortcuts natively.
 | `Api/TmdbController.cs` | Added link exposure mapping to public endpoint. |
 | `Configuration/configPage.html` | Created dynamic array form editor block. |
 | `Web/discoverPage.js` | Updated `injectNativeNavigation` loop. |
-| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.98.0 |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.98.0 |
+
+---
+
+## Phase 74 — Full Bidirectional Jellyseerr Request Status Sync (v1.0.99)
+
+**Date:** 2026-05-30
+
+### Problem
+Movies requested through **automated channels** (Radarr lists, Ombi, automation, or any non-user-facing Jellyseerr request) did not show the "✓ Requested" state on cards. The frontend had two bugs:
+
+1. **Single-fetch guard**: `window._jellyseerrRequestsFetched = true` prevented `fetchAndCacheJellyseerrRequests()` from being called more than once per page session — so if the Set was stale (automated request added after load), it was never refreshed.
+2. **Unidirectional DOM sync**: The old sync only updated buttons from "Request" → "✓ Requested". It never restored "✓ Requested" → "Request" if a movie was un-requested from Jellyseerr.
+3. **Race condition**: `fetchAndCacheJellyseerrRequests()` was fired 100ms after page init via `setTimeout` — cards may not have been rendered yet, so the DOM sync had nothing to update.
+
+### Fix
+
+| Area | Fix |
+|------|-----|
+| **Removed `_jellyseerrRequestsFetched` guard** | Function can now be called repeatedly; always re-fetches from Jellyseerr on every invocation |
+| **Bidirectional DOM sync** | After fetching, iterates ALL `.btn-request` buttons. In Set → mark as `✓ Requested` (disabled). NOT in Set → restore to `Request` (enabled). Handles both first-time marking and un-request scenarios |
+| **Call order fixed** | Removed the `setTimeout(..., 100)` pre-render call. Instead, `fetchAndCacheJellyseerrRequests()` is called 200ms **after all cards are rendered** (after both Upcoming and Recommended rows are fully built) |
+| **Filter Apply sync** | After each Apply Filters re-render (both sections), a 150ms `setTimeout` re-syncs request status for newly built cards |
+| **Refresh Upcoming sync** | After the ↺ Refresh Upcoming button re-renders cards, a 150ms `setTimeout` re-syncs to catch un-request changes |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Rewrote `fetchAndCacheJellyseerrRequests()` with bidirectional sync; removed fetch guard; moved call to post-render; added sync calls after Apply Filters and Refresh Upcoming |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to 1.0.99.0 |
+
+---
+
+### Version Numbering Convention
+Current version: **1.0.99**. Next release: **1.0.100**. Always increment the third part by 1.

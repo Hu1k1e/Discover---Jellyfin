@@ -1451,11 +1451,11 @@
     // 10. BOOT
     // ─────────────────────────────────────────────
 
-    // Load all Jellyseerr requests and cache them as a Set of string TMDB IDs
-    // Backend returns an integer array (HashSet<int> of TMDB IDs)
+    // Load all Jellyseerr requests and cache them as a Set of string TMDB IDs.
+    // Called after cards are rendered so DOM sync is always accurate.
+    // NO single-fetch guard — re-fetches every time so automated requests (Radarr lists, etc.)
+    // are always reflected even if the user didn't manually request through Jellyseerr UI.
     async function fetchAndCacheJellyseerrRequests() {
-        if (window._jellyseerrRequestsFetched) return;
-        window._jellyseerrRequestsFetched = true;
         try {
             var res = await fetch('/UpcomingMovies/jellyseerr/requests', {
                 headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
@@ -1469,18 +1469,31 @@
                     if (id) s.add(String(id));
                 });
                 window._jellyseerrRequests = s;
-                LOG('Jellyseerr requests cached:', s.size, 'items');
-                // Refresh any already-rendered request buttons so they reflect correct state
-                document.querySelectorAll('.btn-request:not(.requested)').forEach(function(btn) {
+                LOG('Jellyseerr requests synced:', s.size, 'items');
+                // Bidirectional DOM sync — update ALL request buttons to match server truth:
+                //   • In Set  → show "✓ Requested" (disabled)
+                //   • Not in Set → restore to "Request" (enabled) — handles un-request case
+                document.querySelectorAll('.btn-request').forEach(function(btn) {
                     var tid = btn.dataset.tmdb;
-                    if (tid && s.has(String(tid))) {
-                        btn.className = 'jellyseerr-request-button btn-request requested';
-                        btn.disabled = true;
-                        btn.innerHTML = '&#10003; Requested';
+                    if (!tid) return;
+                    if (s.has(String(tid))) {
+                        // Mark as requested
+                        if (!btn.classList.contains('requested')) {
+                            btn.className = 'jellyseerr-request-button btn-request requested';
+                            btn.disabled = true;
+                            btn.innerHTML = '&#10003; Requested';
+                        }
+                    } else {
+                        // Restore to requestable (handles un-request from Jellyseerr)
+                        if (btn.classList.contains('requested')) {
+                            btn.className = 'jellyseerr-request-button btn-request';
+                            btn.disabled = false;
+                            btn.innerHTML = 'Request';
+                        }
                     }
                 });
             }
-        } catch(e) { WARN('Failed to cache Jellyseerr requests:', e); }
+        } catch(e) { WARN('Failed to sync Jellyseerr requests:', e); }
     }
 
     var _renderingContainers = new Set();
@@ -1511,9 +1524,10 @@
         if (rowUpcoming) initRowNavigation(rowUpcoming);
         if (rowRec)      initRowNavigation(rowRec);
 
-        // Pre-warm caches while data fetches run in parallel
+        // Pre-warm Radarr cache while data fetches run in parallel
         setTimeout(function() { _fetchRadarrCached(); }, 50);
-        setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 100);
+        // NOTE: fetchAndCacheJellyseerrRequests() is called AFTER cards are rendered
+        // so the bidirectional DOM sync always has buttons to update.
 
         function isSetup(v) { return v && v._needsSetup; }
 
@@ -1587,6 +1601,9 @@
             else if (upc)     { renderTmdbCards(upc.results, rowUpcoming, streamBaseUrl, true); }
             else              { rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
+
+        // Fetch and sync Jellyseerr request status AFTER upcoming cards are rendered
+        // (recommendations render below — a second sync is done after rec cards too)
 
         var btnMore = containerDiv.querySelector('.btn-discover-more');
         var _tmdbRecBuffer = [];
@@ -1695,6 +1712,8 @@
                         if (isSetup(uNew)) rowUpcoming.innerHTML = SETUP_HTML;
                         else if (uNew)     renderTmdbCards(uNew.results, rowUpcoming, streamBaseUrl, true);
                         else               rowUpcoming.innerHTML = '<div class="discover-error">Failed to load.</div>';
+                        // Sync request status after filter re-render
+                        setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 150);
                     } else if (sid === 'recommended' && rowRec) {
                         rowRec.innerHTML = '<div class="discover-loading">Filtering&hellip;</div>';
                         // Full reset of recommendation state
@@ -1722,6 +1741,8 @@
                         } else {
                             rowRec.innerHTML = '<div class="discover-error">Failed to load.</div>';
                         }
+                        // Sync request status after filter re-render
+                        setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 150);
                     }
                     // Auto-close the filter panel after successful apply
                     var panel = containerDiv.querySelector('[data-panel="' + sid + '"]');
@@ -1858,6 +1879,12 @@
             else { rowRec.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
         }
 
+        // ── Sync Jellyseerr request status after ALL cards are rendered ──────────────────
+        // This call happens after both Upcoming and Recommended rows are fully built.
+        // Bidirectional sync: marks automated-list requests as Requested, and restores
+        // un-requested movies back to Request button — no matter how the request originated.
+        setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 200);
+
         // Attach Refresh button handler for Upcoming Movies
         var btnUpcomingRefresh = containerDiv.querySelector('[data-action="refresh-upcoming"]');
         if (btnUpcomingRefresh && rowUpcoming) {
@@ -1870,6 +1897,8 @@
                     if (isSetup(upcNew)) { rowUpcoming.innerHTML = SETUP_HTML; }
                     else if (upcNew)     { renderTmdbCards(upcNew.results, rowUpcoming, streamBaseUrl, true); }
                     else                 { rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>'; }
+                    // Sync Jellyseerr status after refresh (handles un-request scenarios)
+                    setTimeout(function() { fetchAndCacheJellyseerrRequests(); }, 150);
                 } catch(e) {
                     rowUpcoming.innerHTML = '<div class="discover-error">Failed to load. Check browser console.</div>';
                 }
