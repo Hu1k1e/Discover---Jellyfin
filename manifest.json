@@ -9,6 +9,14 @@
     "imageUrl": "https://raw.githubusercontent.com/Hu1k1e/Discover---Jellyfin/main/icon.png",
     "versions": [
       {
+        "version": "1.0.99.0",
+        "changelog": "Release 1.0.99.0. See GitHub for details.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/Hu1k1e/Discover---Jellyfin/releases/download/v1.0.99/jellyfin-plugin-upcoming-movies_v1.0.99.zip",
+        "checksum": "a0abd15ca9bcb38f70a18086f5426c7e",
+        "timestamp": "2026-05-30T16:08:11Z"
+      },
+      {
         "version": "1.0.98.0",
         "changelog": "Release 1.0.98.0. See GitHub for details.",
         "targetAbi": "10.11.0.0",
