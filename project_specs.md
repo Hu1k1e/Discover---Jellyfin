@@ -2181,5 +2181,30 @@ Jellyfin 12 introduced breaking API and framework changes (updating to .NET 10, 
 
 ---
 
+## Phase 76 — Jellyfin 12 targetAbi & CI Fix (v1.0.101)
+
+**Date:** 2026-10-03
+
+### Problem
+Although the plugin code was updated for Jellyfin 12, the GitHub Actions workflow was still hardcoding `"targetAbi": "10.11.0.0"` in the `manifest.json` and using the `.NET 9` SDK, which caused Jellyfin 12 to reject the new version as incompatible (it would not appear in the catalog for Jellyfin 12 users).
+
+### Fix
+
+| Area | Fix |
+|------|-----|
+| **GitHub Actions** | Updated `actions/setup-dotnet@v4` to use `10.0.x` |
+| **Manifest Target ABI** | Updated the `jq` command in the release workflow to set `"targetAbi": "12.1.0.0"` |
+| **Recovery** | Manually patched the `manifest.json` entry for `1.0.100.0` to also have `"targetAbi": "12.1.0.0"` |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `.github/workflows/build-release.yml` | Updated `.NET` version and `targetAbi` |
+| `manifest.json` | Fixed `targetAbi` for `1.0.100.0` |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to `1.0.101.0` |
+
+---
+
 ### Version Numbering Convention
-Current version: **1.0.100**. Next release: **1.0.101**. Always increment the third part by 1.
+Current version: **1.0.101**. Next release: **1.0.102**. Always increment the third part by 1.
