@@ -2154,5 +2154,32 @@ Movies requested through **automated channels** (Radarr lists, Ombi, automation,
 
 ---
 
+---
+
+## Phase 75 — Jellyfin 12 Compatibility (v1.0.100)
+
+**Date:** 2026-10-03
+
+### Problem
+Jellyfin 12 introduced breaking API and framework changes (updating to .NET 10, changing `IUserManager.Users` to `IUserManager.GetUsers()`, and updating Nuget packages), rendering the plugin incompatible with newer server versions.
+
+### Fix
+
+| Area | Fix |
+|------|-----|
+| **Target Framework** | Updated `.csproj` to target `net10.0` |
+| **Nuget Packages** | Updated `Jellyfin.Controller` and `Jellyfin.Model` packages to version `12.1.0` |
+| **API Migration** | Replaced `_userManager.Users` property accesses with `_userManager.GetUsers()` in `SyncProfilesTask.cs` and `TmdbController.cs` |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Updated framework and packages; Bumped Version to 1.0.100.0 |
+| `ScheduledTasks/SyncProfilesTask.cs` | Migrated `_userManager.Users` to `_userManager.GetUsers()` |
+| `Api/TmdbController.cs` | Migrated `_userManager.Users` to `_userManager.GetUsers()` |
+
+---
+
 ### Version Numbering Convention
-Current version: **1.0.99**. Next release: **1.0.100**. Always increment the third part by 1.
+Current version: **1.0.100**. Next release: **1.0.101**. Always increment the third part by 1.

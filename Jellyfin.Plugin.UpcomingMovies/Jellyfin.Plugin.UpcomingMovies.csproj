@@ -1,24 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Jellyfin.Plugin.UpcomingMovies</RootNamespace>
     <AssemblyName>Jellyfin.Plugin.UpcomingMovies</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <NoWarn>CS1591</NoWarn>
-    <Version>1.0.99.0</Version>
-    <AssemblyVersion>1.0.99.0</AssemblyVersion>
-    <FileVersion>1.0.99.0</FileVersion>
+    <Version>1.0.100.0</Version>
+    <AssemblyVersion>1.0.100.0</AssemblyVersion>
+    <FileVersion>1.0.100.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Reference Jellyfin 10.11.6 packages — ExcludeAssets runtime so they are not bundled in the DLL -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.6">
+    <!-- Reference Jellyfin 12 packages — ExcludeAssets runtime so they are not bundled in the DLL -->
+    <PackageReference Include="Jellyfin.Controller" Version="12.1.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
-    <PackageReference Include="Jellyfin.Model" Version="10.11.6">
+    <PackageReference Include="Jellyfin.Model" Version="12.1.0">
       <ExcludeAssets>runtime</ExcludeAssets>
     </PackageReference>
     <!-- Required by StartupService for JObject payload to File Transformation Plugin -->
