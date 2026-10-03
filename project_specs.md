@@ -2206,5 +2206,27 @@ Although the plugin code was updated for Jellyfin 12, the GitHub Actions workflo
 
 ---
 
+## Phase 77 — Jellyfin 12 Auth Header Fix (v1.0.102)
+
+**Date:** 2026-10-03
+
+### Problem
+Jellyfin 12 completely dropped support for the legacy `X-Emby-Authorization` header, responding with `401 Unauthorized` for all internal plugin API routes that expected the `[Authorize]` attribute to pass. This resulted in TMDB Upstream Error 401 and Recommendations Error 401 when the UI attempted to fetch data.
+
+### Fix
+
+| Area | Fix |
+|------|-----|
+| **Frontend Authentication** | Replaced `X-Emby-Authorization` with the standard `Authorization` header across all `fetch` calls in `discoverPage.js`, passing the `MediaBrowser` scheme correctly per Jellyfin 12 requirements. |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Replaced all `X-Emby-Authorization` keys in `fetch` headers with `Authorization` |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to `1.0.102.0` |
+
+---
+
 ### Version Numbering Convention
-Current version: **1.0.101**. Next release: **1.0.102**. Always increment the third part by 1.
+Current version: **1.0.102**. Next release: **1.0.103**. Always increment the third part by 1.

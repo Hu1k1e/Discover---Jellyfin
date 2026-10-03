@@ -44,7 +44,7 @@
         if (_pluginConfig) return _pluginConfig;
         try {
             var res = await fetch('/UpcomingMovies/tmdb/config', {
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                headers: { 'Authorization': getJellyfinAuthHeader() }
             });
             if (res.ok) _pluginConfig = await res.json();
         } catch (err) {
@@ -710,7 +710,7 @@
         }
         var qs = params.length ? '?' + params.join('&') : '';
         var res = await fetch('/UpcomingMovies/tmdb/upcoming' + qs, {
-            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+            headers: { 'Authorization': getJellyfinAuthHeader() }
         });
         if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
         if (!res.ok) throw new Error('TMDB upstream error ' + res.status);
@@ -743,7 +743,7 @@
         }
 
         var res = await fetch('/UpcomingMovies/tmdb/recommendations?' + params.join('&'), {
-            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+            headers: { 'Authorization': getJellyfinAuthHeader() }
         });
         if (res.status === 400 || res.status === 500) return NEEDS_SETUP;
         if (!res.ok) throw new Error('Recommendations error ' + res.status);
@@ -759,7 +759,7 @@
     async function _fetchRadarrCached() {
         if (_radarrCache !== null) return _radarrCache;
         try {
-            var rr = await fetch('/UpcomingMovies/jellyseerr/radarr', { headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() } });
+            var rr = await fetch('/UpcomingMovies/jellyseerr/radarr', { headers: { 'Authorization': getJellyfinAuthHeader() } });
             if (rr.ok) _radarrCache = await rr.json();
         } catch(e) { WARN('Radarr prefetch failed', e); }
         return _radarrCache || [];
@@ -877,7 +877,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': getJellyfinAuthHeader()
+                        'Authorization': getJellyfinAuthHeader()
                     },
                     body: JSON.stringify(body)
                 });
@@ -924,7 +924,7 @@
     // Confirmed from swiparr JellyfinProvider.toggleWatchlist:
     //   POST /Users/{uid}/Items/{id}/Rating?Likes=true  → add to watchlist
     //   POST /Users/{uid}/Items/{id}/Rating?Likes=false → remove from watchlist
-    // Header must be 'Authorization' (not 'X-Emby-Authorization') per Jellyfin API spec.
+    // Header must be 'Authorization' (not 'Authorization') per Jellyfin API spec.
     async function addToWatchlist(jellyfinId) {
         var client = window.ApiClient;
         if (!client) return;
@@ -1059,7 +1059,7 @@
                 renderActors(window._creditsCache[credCacheKey]);
             } else {
                 fetch('/UpcomingMovies/tmdb/credits?tmdbId=' + opts.tmdbId, {
-                    headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                    headers: { 'Authorization': getJellyfinAuthHeader() }
                 }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
                     var cast = data && data.cast ? data.cast : null;
                     window._creditsCache[credCacheKey] = cast;
@@ -1101,7 +1101,7 @@
                 applyRatings(cachedRatings);
             } else {
                 fetch('/UpcomingMovies/tmdb/ratings?tmdbId=' + opts.tmdbId, {
-                    headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                    headers: { 'Authorization': getJellyfinAuthHeader() }
                 }).then(function(r) { return r.ok ? r.json() : null; }).then(function(data) {
                     window._ratingsCache[cacheKey] = data; // cache whether data or null
                     applyRatings(data);
@@ -1392,7 +1392,7 @@
                     if (dUserId && tmdbId) {
                         await fetch('/UpcomingMovies/tmdb/dismiss?userId=' + encodeURIComponent(dUserId) + '&tmdbId=' + tmdbId + gParam, {
                             method: 'POST',
-                            headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                            headers: { 'Authorization': getJellyfinAuthHeader() }
                         });
                     }
                 } catch(err) { WARN('Dismiss API error:', err); }
@@ -1458,7 +1458,7 @@
     async function fetchAndCacheJellyseerrRequests() {
         try {
             var res = await fetch('/UpcomingMovies/jellyseerr/requests', {
-                headers: { 'X-Emby-Authorization': getJellyfinAuthHeader() }
+                headers: { 'Authorization': getJellyfinAuthHeader() }
             });
             if (res.ok) {
                 var data = await res.json();
