@@ -437,6 +437,22 @@ public class UserProfileService
     }
 
     /// <summary>
+    /// Forgets a movie that was removed from the user's watchlist, so adding it again later counts as a new
+    /// watchlist signal. Taste weights are additive-only and are intentionally left unchanged.
+    /// </summary>
+    public void RemoveFromWatchlist(string userId, int tmdbId)
+    {
+        lock (LockFor(userId))
+        {
+            var profile = GetProfile(userId);
+            if (profile.WatchlistTmdbIds.Remove(tmdbId))
+            {
+                SaveProfile(profile);
+            }
+        }
+    }
+
+    /// <summary>
     /// Returns up to N most recently watchlisted TMDB IDs for use as recommendation seeds.
     /// Excludes items already in the watch history.
     /// </summary>

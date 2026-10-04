@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -61,13 +62,52 @@ public class UserDataSavedConsumer
             .Where(id => id > 0)
             .ToList();
 
-        // Watchlist signal ONLY — full watch events are handled by PlaybackStoppedConsumer
+        // Watchlist signal ONLY — full watch events are handled by PlaybackStoppedConsumer.
+        //
+        // UserDataSaved fires for EVERY save of a movie's user data (playback progress, "played" toggles,
+        // watchlist sync tasks that re-send the same rating, ...). A movie that is already on the watchlist
+        // keeps Likes == true on all of those saves, so reacting to "Likes == true" alone re-applied the
+        // watchlist weight (and re-fetched TMDB data) over and over, inflating the taste profile.
+        // Only the transition "not on the watchlist -> on the watchlist" counts, and removing a movie
+        // (Likes no longer true) makes it eligible again.
+        var known = KnownWatchlist(userId);
         if (e.UserData.Likes == true)
         {
+            // Add returns false when the movie is already tracked: not a new watchlist add -> ignore
+            bool isNew;
+            lock (known)
+            {
+                isNew = known.Add(tmdbId);
+            }
+
+            if (!isNew) return;
+
             // Watchlist signal — user bookmarked this movie (our /Rating?Likes=true call)
             Task.Run(() => FetchDetailsAndUpdateAsync(userId, tmdbId, genreIds, 1.0, isWatchlist: true));
         }
+        else if (e.SaveReason.ToString() == "UpdateUserRating")
+        {
+            // A real rating/watchlist toggle with Likes no longer true: forget the movie so a later re-add counts again.
+            // (Other save reasons such as playback progress are ignored without touching any file.)
+            bool wasTracked;
+            lock (known)
+            {
+                wasTracked = known.Remove(tmdbId);
+            }
+
+            if (wasTracked)
+            {
+                Task.Run(() => _profileService.RemoveFromWatchlist(userId, tmdbId));
+            }
+        }
     }
+
+    // Per-user set of TMDB ids already counted as watchlist signals. Loaded once per user from the stored
+    // profile (WatchlistTmdbIds) and then kept in memory, so the very frequent UserDataSaved events never read files.
+    private readonly ConcurrentDictionary<string, HashSet<int>> _watchlistKnown = new(StringComparer.OrdinalIgnoreCase);
+
+    private HashSet<int> KnownWatchlist(string userId)
+        => _watchlistKnown.GetOrAdd(userId, id => new HashSet<int>(_profileService.GetProfile(id).WatchlistTmdbIds));
 
     /// <summary>
     /// Fetches TMDB movie details (for original_language) and credits (directors/actors),
