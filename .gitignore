@@ -17,3 +17,8 @@ Thumbs.db
 
 ## Ignore NuGet cache
 *.nupkg
+
+## Private agent / project notes - never commit
+Instructions.md
+instructions.md
+project_specs.md

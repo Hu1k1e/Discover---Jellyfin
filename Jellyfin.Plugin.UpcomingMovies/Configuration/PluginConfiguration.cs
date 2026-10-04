@@ -42,7 +42,7 @@ public class PluginConfiguration : BasePluginConfiguration
         JellyseerrApiKey = string.Empty;
         JellyfinLocalUrl = "http://localhost:8096";
         JellyfinLocalApiKey = string.Empty;
-        StreamBaseUrl = "https://stream.hulksmash.ca/movie/";
+        StreamBaseUrl = string.Empty;
         NavPlacement = NavPlacement.Sidebar;
         ShowUpcomingSection = true;
         ShowRecommendationsSection = true;
@@ -74,7 +74,7 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets the base URL for the Stream Directly action.
-    /// The TMDB ID is appended to this URL (e.g. https://stream.hulksmash.ca/movie/12345).
+    /// The TMDB ID is appended to this URL (e.g. https://stream.example.com/movie/12345).
     /// </summary>
     public string StreamBaseUrl { get; set; }
 

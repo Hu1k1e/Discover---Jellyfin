@@ -76,7 +76,7 @@ If you don't use Custom Tabs, you can load the Discover page natively in the sid
 | **TMDB API Key** | Get free at [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api) |
 | **Jellyseerr URL** | Your Jellyseerr instance URL, e.g. `https://jellyseerr.yourdomain.com` |
 | **Jellyseerr API Key** | Jellyseerr → Settings → General → API Key |
-| **Stream Base URL** | e.g. `https://stream.hulksmash.ca/movie/` — TMDB ID is appended |
+| **Stream Base URL** | e.g. `https://stream.example.com/movie/` — TMDB ID is appended |
 | **Section toggles** | Show/hide Upcoming, Recommended, Watchlist independently |
 
 ---
