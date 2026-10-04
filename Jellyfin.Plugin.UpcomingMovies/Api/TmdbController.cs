@@ -1233,7 +1233,7 @@ public class TmdbController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetAllProfileUsers()
     {
-        var users = _userManager.GetUsers().Select(u => u.Id.ToString("N")).ToList();
+        var users = _userManager.Users.Select(u => u.Id.ToString("N")).ToList();
         return Ok(new { count = users.Count, userIds = users });
     }
 

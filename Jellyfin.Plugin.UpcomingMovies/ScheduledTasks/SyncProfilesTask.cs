@@ -57,7 +57,7 @@ public class SyncProfilesTask : IScheduledTask
         _logger.LogInformation("[UpcomingMovies] Starting Bulk Profile Sync Task...");
         _tmdbCache.Clear();
 
-        var users = _userManager.GetUsers().ToList();
+        var users = _userManager.Users.ToList();
         var allMovies = _libraryManager.GetItemList(new InternalItemsQuery
         {
             IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Movie }
