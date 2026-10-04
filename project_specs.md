@@ -11,14 +11,21 @@
 
 This is the exact procedure to push a change and have it appear in Jellyfin's plugin catalog. **Follow every step.** Past failures came from skipping steps or doing them out of order.
 
-## Step 1 — Make + Commit Your Changes
+## Step 1 — Test and Build Locally First
+Always test the build locally before committing. If there are compilation errors, fix them first.
+
+```powershell
+dotnet build Jellyfin.Plugin.UpcomingMovies/Jellyfin.Plugin.UpcomingMovies.csproj
+```
+
+## Step 2 — Make + Commit Your Changes
 
 ```powershell
 git add <changed files>
 git commit -m "fix: description of what changed"
 ```
 
-## Step 2 — Push the Main Branch
+## Step 3 — Push the Main Branch
 
 ```powershell
 git push origin main
@@ -31,7 +38,7 @@ git push origin main
 > ```
 > PowerShell may show exit code 1 even on success — check the output for `main -> main` to confirm.
 
-## Step 3 — Create + Push a Version Tag
+## Step 4 — Create + Push a Version Tag
 
 The GitHub Actions workflow **only triggers on `v*` tags**, NOT on regular commits.
 
@@ -42,7 +49,7 @@ git push origin v1.0.XX
 
 Confirm success: output should include `* [new tag] v1.0.XX -> v1.0.XX`
 
-## Step 4 — Wait for GitHub Actions (~2 minutes)
+## Step 5 — Wait for GitHub Actions (~2 minutes)
 
 The workflow (`.github/workflows/build-release.yml`) will automatically:
 1. Build the plugin `.dll` 
@@ -51,7 +58,7 @@ The workflow (`.github/workflows/build-release.yml`) will automatically:
 4. **Prepend a new version entry to `manifest.json`** and commit it to `main`
 5. Create a GitHub Release with the ZIP as an asset
 
-## Step 5 — Pull the Actions Bot Commit
+## Step 6 — Pull the Actions Bot Commit
 
 After the workflow completes, the Actions bot commits an updated `manifest.json` to `main`. Pull it so local is in sync:
 
@@ -61,7 +68,7 @@ git pull origin main
 
 Verify `manifest.json` starts with `"version": "1.0.XX.0"` — that's the confirmation it worked.
 
-## Step 6 — Verify the Release
+## Step 7 — Verify the Release
 
 Check: `https://api.github.com/repos/Hu1k1e/Discover---Jellyfin/releases?per_page=1`  
 Should show the new release with `"tag_name": "v1.0.XX"` and a non-empty `assets` array.
