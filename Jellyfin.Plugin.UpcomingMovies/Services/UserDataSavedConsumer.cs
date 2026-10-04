@@ -89,7 +89,7 @@ public class UserDataSavedConsumer
             var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                var client = _httpClientFactory.CreateClient();
+                var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
 
                 // ── Fetch 1: Movie details for original_language ──────────────────────────
                 // This is the CRITICAL call that makes language weighting work correctly.

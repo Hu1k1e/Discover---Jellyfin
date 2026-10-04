@@ -21,6 +21,9 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
 {
     private readonly UserDataSavedConsumer? _consumer;
     private readonly PlaybackStoppedConsumer? _playbackConsumer;
+    private readonly MediaBrowser.Controller.Library.IUserDataManager? _userDataManager;
+    private readonly ISessionManager? _sessionManager;
+    private bool _disposed;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Plugin"/> class.
@@ -36,6 +39,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+        _userDataManager = userDataManager;
+        _sessionManager = sessionManager;
 
         // Create the profile service -- stored static so TmdbController can access without DI
         ProfileService = new UserProfileService(
@@ -122,6 +127,23 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
+        if (!_disposed)
+        {
+            _disposed = true;
+
+            // Unsubscribe so a reloaded plugin does not leave handlers (and the old instance) alive in Jellyfin
+            if (_consumer is not null && _userDataManager is not null)
+            {
+                _userDataManager.UserDataSaved -= _consumer.OnUserDataSaved;
+            }
+
+            if (_playbackConsumer is not null && _sessionManager is not null)
+            {
+                _sessionManager.PlaybackProgress -= _playbackConsumer.OnPlaybackProgress;
+                _sessionManager.PlaybackStopped  -= _playbackConsumer.OnPlaybackStopped;
+            }
+        }
+
         GC.SuppressFinalize(this);
     }
 }

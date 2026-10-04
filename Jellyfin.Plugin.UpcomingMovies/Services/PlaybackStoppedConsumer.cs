@@ -224,7 +224,7 @@ public class PlaybackStoppedConsumer
             var apiKey = Plugin.Instance?.Configuration?.TmdbApiKey;
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
-                var client = _httpClientFactory.CreateClient();
+                var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
 
                 // 1 — original_language
                 try

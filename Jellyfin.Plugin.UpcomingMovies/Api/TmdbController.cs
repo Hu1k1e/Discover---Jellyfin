@@ -45,6 +45,34 @@ public class TmdbController : ControllerBase
     // Convenience accessor — returns Plugin.ProfileService, or null for safe handling below
     private static UserProfileService? ProfileService => Plugin.ProfileService;
 
+    // ── Caller identity helpers (used to stop one user reading/changing another user's profile) ──
+
+    /// <summary>The Jellyfin user id of the authenticated caller, or Guid.Empty when it cannot be determined.</summary>
+    private Guid GetCallerUserId()
+    {
+        var raw = User.FindFirst("http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")?.Value;
+        return Guid.TryParse(raw, out var id) ? id : Guid.Empty;
+    }
+
+    private bool CallerIsAdmin()
+        => User.IsInRole("Administrator")
+           || string.Equals(User.FindFirst("IsAdministrator")?.Value, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when the caller may act on <paramref name="userId"/>: it is their own id, they are an administrator,
+    /// or the caller's identity could not be determined (keeps the previous behaviour instead of locking users out).
+    /// </summary>
+    private bool MayActOnUser(string userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || !Guid.TryParse(userId, out var target))
+        {
+            return true;
+        }
+
+        var caller = GetCallerUserId();
+        return caller == Guid.Empty || caller == target || CallerIsAdmin();
+    }
+
     /// <summary>
     /// Proxies a request to TMDB's /discover/movie endpoint filtered to upcoming releases.
     /// </summary>
@@ -69,7 +97,7 @@ public class TmdbController : ControllerBase
                 return BadRequest(new { error = "TMDB API key is not configured. Please set it in the plugin settings." });
             }
 
-            var client = _httpClientFactory.CreateClient();
+            var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
 
             // Build date range
             var fromStr = string.IsNullOrWhiteSpace(dateFrom) ? DateTime.UtcNow.ToString("yyyy-MM-dd")            : dateFrom;
@@ -193,6 +221,9 @@ public class TmdbController : ControllerBase
                 return StatusCode(400, new { _needsSetup = true, error = "TMDB API key not configured." });
             }
 
+            // A user may only request recommendations for their own profile (admins may use any)
+            if (!MayActOnUser(userId)) return Forbid();
+
             // ── Load user profile (ProfileService is null only before plugin fully initialises)
             var svc = ProfileService;
             var profile = svc is null || string.IsNullOrWhiteSpace(userId)
@@ -222,7 +253,7 @@ public class TmdbController : ControllerBase
             if (!string.IsNullOrWhiteSpace(filterDateFrom) && DateTime.TryParse(filterDateFrom, out var fdf)) fDateFrom = fdf;
             if (!string.IsNullOrWhiteSpace(filterDateTo)   && DateTime.TryParse(filterDateTo,   out var fdt)) fDateTo   = fdt;
 
-            var client = _httpClientFactory.CreateClient();
+            var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
 
             // Thread-safe accumulation of candidates
             var lock_ = new object();
@@ -975,7 +1006,7 @@ public class TmdbController : ControllerBase
             if (string.IsNullOrWhiteSpace(apiKey) || tmdbId <= 0)
                 return BadRequest(new { error = "TMDB API key not configured or invalid tmdbId." });
 
-            var client = _httpClientFactory.CreateClient();
+            var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
 
             // Fetch full TMDB details to get imdb_id and vote_average
             var tmdbUrl = $"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}";
@@ -1061,7 +1092,7 @@ public class TmdbController : ControllerBase
 
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
             var url = $"{TmdbBaseUrl}/movie/{tmdbId}/credits?api_key={apiKey}&language=en-US";
             var res = await client.GetAsync(url).ConfigureAwait(false);
             if (!res.IsSuccessStatusCode)
@@ -1142,13 +1173,18 @@ public class TmdbController : ControllerBase
     /// URL: GET /UpcomingMovies/tmdb/profile?userId={jellyfinUserId}
     /// </summary>
     [HttpGet("profile")]
-    [AllowAnonymous]   // taste-profile data only — no API keys; safe to read without Jellyfin cookie
+    [Authorize]   // taste profiles are private: own profile or administrator only
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IActionResult GetUserProfile([FromQuery] string userId = "")
     {
         if (string.IsNullOrWhiteSpace(userId))
             return BadRequest(new { error = "userId query param is required" });
+
+        // Strict: unlike the UI endpoints, an unidentifiable caller is NOT allowed here.
+        var callerId = GetCallerUserId();
+        var isSelf = callerId != Guid.Empty && Guid.TryParse(userId, out var requested) && requested == callerId;
+        if (!isSelf && !CallerIsAdmin()) return Forbid();
 
         var svc = ProfileService;
         if (svc is null)
@@ -1229,10 +1265,12 @@ public class TmdbController : ControllerBase
     /// URL: GET /UpcomingMovies/tmdb/profile/all
     /// </summary>
     [HttpGet("profile/all")]
-    [AllowAnonymous]   // lists userId files only
+    [Authorize]   // administrators only (used by the dashboard configuration page)
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult GetAllProfileUsers()
     {
+        if (!CallerIsAdmin()) return Forbid();
+
         var users = _userManager.GetUsers().Select(u => u.Id.ToString("N")).ToList();
         return Ok(new { count = users.Count, userIds = users });
     }
@@ -1254,6 +1292,9 @@ public class TmdbController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(userId) || tmdbId == 0)
             return BadRequest(new { error = "userId and tmdbId are required" });
+
+        // A user may only dismiss movies on their own profile (admins may use any)
+        if (!MayActOnUser(userId)) return Forbid();
 
         var svc = ProfileService;
         if (svc is null) return StatusCode(503, new { error = "ProfileService not initialised" });
@@ -1278,7 +1319,7 @@ public class TmdbController : ControllerBase
                 var apiKey = Plugin.Instance?.Configuration.TmdbApiKey ?? "";
                 if (!string.IsNullOrWhiteSpace(apiKey))
                 {
-                    var client = _httpClientFactory.CreateClient();
+                    var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
                     var r = await client.GetAsync($"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}&language=en-US").ConfigureAwait(false);
                     if (r.IsSuccessStatusCode)
                     {

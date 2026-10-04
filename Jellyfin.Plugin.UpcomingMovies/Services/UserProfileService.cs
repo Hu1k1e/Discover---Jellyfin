@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,6 +18,11 @@ public class UserProfileService
 {
     private readonly string _profilesDir;
     private readonly ILogger<UserProfileService> _logger;
+
+    // One lock object per user so concurrent events for the same user cannot overwrite each other's changes
+    private readonly ConcurrentDictionary<string, object> _userLocks = new(StringComparer.OrdinalIgnoreCase);
+
+    private object LockFor(string userId) => _userLocks.GetOrAdd(userId ?? string.Empty, _ => new object());
 
     // Exponential decay factor: each existing weight is multiplied by this before adding new signal.
     // 0.92 means "last 12 watches contribute ~50% of current weights" — good balance of memory vs adaptability.
@@ -73,27 +79,36 @@ public class UserProfileService
 
     public UserProfileData GetProfile(string userId)
     {
-        var path = GetProfilePath(userId);
-        if (!File.Exists(path))
+        // Only GUID user ids map to a profile file (the id can come from a query string)
+        if (!Guid.TryParse(userId, out _))
         {
             return new UserProfileData { UserId = userId };
         }
 
-        try
+        lock (LockFor(userId))
         {
-            var json = File.ReadAllText(path);
-            var profile = JsonSerializer.Deserialize<UserProfileData>(json)
-                   ?? new UserProfileData { UserId = userId };
-            
-            // Lazily process any partial watches that have been abandoned for > 7 days
-            ProcessAbandonedWatches(profile);
-            
-            return profile;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[UpcomingMovies] Could not read profile for user {UserId}", userId);
-            return new UserProfileData { UserId = userId };
+            var path = GetProfilePath(userId);
+            if (!File.Exists(path))
+            {
+                return new UserProfileData { UserId = userId };
+            }
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var profile = JsonSerializer.Deserialize<UserProfileData>(json)
+                       ?? new UserProfileData { UserId = userId };
+
+                // Lazily process any partial watches that have been abandoned for > 7 days
+                ProcessAbandonedWatches(profile);
+
+                return profile;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[UpcomingMovies] Could not read profile for user {UserId}", userId);
+                return new UserProfileData { UserId = userId };
+            }
         }
     }
 
@@ -103,7 +118,15 @@ public class UserProfileService
         {
             profile.LastUpdated = DateTime.UtcNow;
             var json = JsonSerializer.Serialize(profile, new JsonSerializerOptions { WriteIndented = false });
-            File.WriteAllText(GetProfilePath(profile.UserId), json);
+            var path = GetProfilePath(profile.UserId);
+
+            lock (LockFor(profile.UserId))
+            {
+                // Write to a temp file and swap it in, so a crash or a concurrent read never sees a half-written profile
+                var tmp = path + ".tmp";
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, path, overwrite: true);
+            }
         }
         catch (Exception ex)
         {
@@ -124,6 +147,23 @@ public class UserProfileService
         IEnumerable<int> actorTmdbIds,
         IEnumerable<int> keywordTmdbIds,
         double watchPercentage = 1.0)
+    {
+        // Hold the per-user lock for the whole read-modify-write cycle
+        lock (LockFor(userId))
+        {
+            UpdateWithWatchCore(userId, tmdbId, genreIds, language, directorTmdbIds, actorTmdbIds, keywordTmdbIds, watchPercentage);
+        }
+    }
+
+    private void UpdateWithWatchCore(
+        string userId,
+        int tmdbId,
+        IEnumerable<int> genreIds,
+        string language,
+        IEnumerable<int> directorTmdbIds,
+        IEnumerable<int> actorTmdbIds,
+        IEnumerable<int> keywordTmdbIds,
+        double watchPercentage)
     {
         var profile = GetProfile(userId);
 
@@ -341,6 +381,22 @@ public class UserProfileService
         IEnumerable<int> actorTmdbIds,
         IEnumerable<int> keywordTmdbIds)
     {
+        // Hold the per-user lock for the whole read-modify-write cycle
+        lock (LockFor(userId))
+        {
+            UpdateWithWatchlistCore(userId, tmdbId, genreIds, language, directorTmdbIds, actorTmdbIds, keywordTmdbIds);
+        }
+    }
+
+    private void UpdateWithWatchlistCore(
+        string userId,
+        int tmdbId,
+        IEnumerable<int> genreIds,
+        string language,
+        IEnumerable<int> directorTmdbIds,
+        IEnumerable<int> actorTmdbIds,
+        IEnumerable<int> keywordTmdbIds)
+    {
         var profile = GetProfile(userId);
 
         // Track watchlisted TMDB IDs (newest first, capped at 100)
@@ -466,5 +522,13 @@ public class UserProfileService
     }
 
     private string GetProfilePath(string userId)
-        => Path.Combine(_profilesDir, $"{userId}.json");
+    {
+        // userId can originate from a query string: accept GUIDs only so it can never escape the profile folder
+        if (!Guid.TryParse(userId, out var id))
+        {
+            throw new ArgumentException("Invalid user id.", nameof(userId));
+        }
+
+        return Path.Combine(_profilesDir, $"{id:N}.json");
+    }
 }

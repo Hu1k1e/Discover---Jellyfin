@@ -251,7 +251,7 @@ public class SyncProfilesTask : IScheduledTask
         {
             try
             {
-                var client = _httpClientFactory.CreateClient();
+                var client = Jellyfin.Plugin.UpcomingMovies.Services.TmdbHttp.CreateClient();
                 
                 // 1. Language
                 var url = $"{TmdbBaseUrl}/movie/{tmdbId}?api_key={apiKey}&language=en-US";

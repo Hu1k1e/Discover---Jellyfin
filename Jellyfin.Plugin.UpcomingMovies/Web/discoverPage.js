@@ -39,18 +39,43 @@
     // ─────────────────────────────────────────────
 
     var _pluginConfig = null;
+    var _configInFlight = null;   // one request at a time, shared by every caller
+    var _configRetryAt = 0;       // after a failure, do not ask again for 30 seconds
+
+    function defaultPluginConfig() {
+        return { streamBaseUrl: '', showUpcoming: true, showRecommendations: true, tmdbConfigured: false, jellyseerrConfigured: false };
+    }
+
+    // True once the user is signed in (the plugin endpoints need a token; before that they only answer 401)
+    function hasAuthToken() {
+        var c = window.ApiClient;
+        return !!(c && typeof c.accessToken === 'function' && c.accessToken());
+    }
 
     async function fetchPluginConfig() {
         if (_pluginConfig) return _pluginConfig;
-        try {
-            var res = await fetch('/UpcomingMovies/tmdb/config', {
-                headers: { 'Authorization': getJellyfinAuthHeader() }
-            });
-            if (res.ok) _pluginConfig = await res.json();
-        } catch (err) {
-            WARN('Could not fetch plugin config:', err);
+        // Not signed in yet (e.g. login page) or recently failed: answer with defaults WITHOUT hitting the server
+        if (!hasAuthToken() || Date.now() < _configRetryAt) return defaultPluginConfig();
+
+        if (!_configInFlight) {
+            _configInFlight = (async function() {
+                try {
+                    var res = await fetch('/UpcomingMovies/tmdb/config', {
+                        headers: { 'Authorization': getJellyfinAuthHeader() }
+                    });
+                    if (res.ok) _pluginConfig = await res.json();
+                    else _configRetryAt = Date.now() + 30000;
+                } catch (err) {
+                    _configRetryAt = Date.now() + 30000;
+                    WARN('Could not fetch plugin config:', err);
+                } finally {
+                    _configInFlight = null;
+                }
+                return _pluginConfig;
+            })();
         }
-        return _pluginConfig || { streamBaseUrl: '', showUpcoming: true, showRecommendations: true, tmdbConfigured: false, jellyseerrConfigured: false };
+        await _configInFlight;
+        return _pluginConfig || defaultPluginConfig();
     }
 
     // ─────────────────────────────────────────────
@@ -1928,7 +1953,7 @@
 
     // Global URL Interceptor to hijack #/home?custom=discover (prevents Page Not Found header stripping)
     var _lastCustomHash = window.location.hash;
-    setInterval(function() {
+    function onHashMaybeCustom() {
         var currentHash = window.location.hash;
         if (currentHash !== _lastCustomHash) {
             _lastCustomHash = currentHash;
@@ -1940,22 +1965,56 @@
                 window.location.reload();
             }
         }
-    }, 150);
+    }
+    // Event driven (no timer): fragment navigation, back/forward, and router pushState/replaceState
+    window.addEventListener('hashchange', onHashMaybeCustom);
+    window.addEventListener('popstate', onHashMaybeCustom);
+    if (!window.__discoverHistoryPatched) {
+        window.__discoverHistoryPatched = true;
+        ['pushState', 'replaceState'].forEach(function(method) {
+            var original = history[method];
+            if (typeof original !== 'function') return;
+            history[method] = function() {
+                var result = original.apply(this, arguments);
+                try { onHashMaybeCustom(); } catch (e) { /* never break navigation */ }
+                return result;
+            };
+        });
+    }
 
     // Inject Navigation dynamically based on NavPlacement configuration + Secondary Links
+    var _navInjecting = false;   // true while one injection attempt is running (prevents stacked intervals)
+
     async function injectNativeNavigation() {
-        if (window._discoverNavInjected) return;
+        if (window._discoverNavInjected || _navInjecting) return;
+        if (!hasAuthToken()) return;   // nothing to inject before sign-in
+        _navInjecting = true;
         var config = await fetchPluginConfig();
         var placement = config.navPlacement || 'Sidebar';
 
         if (placement === 'Header') {
             // Header placement: do NOT inject a Discover tab — user controls header via their own JS inject
             window._discoverNavInjected = true;
+            _navInjecting = false;
             return;
         } else {
             // Sidebar Placement
+            var sbTries = 0;
             var sbInterval = setInterval(function() {
                 var menu = document.querySelector('.navMenu');
+                if (++sbTries > 240) {
+                    // Gave up after ~2 minutes; a later DOM change will try again
+                    clearInterval(sbInterval);
+                    _navInjecting = false;
+                    return;
+                }
+                if (menu && menu.querySelector('.discover-sidebar-tab')) {
+                    // Already there (e.g. injected by an earlier attempt): stop polling
+                    clearInterval(sbInterval);
+                    window._discoverNavInjected = true;
+                    _navInjecting = false;
+                    return;
+                }
                 if (menu && !menu.querySelector('.discover-sidebar-tab')) {
                     clearInterval(sbInterval);
                     var link = document.createElement('a');
@@ -2017,20 +2076,28 @@
                     });
                     
                     window._discoverNavInjected = true;
+                    _navInjecting = false;
                 }
             }, 500);
         }
     }
 
+    var _observerTimer = null;
     var observer = new MutationObserver(function() {
-        // Fallback for Custom Tabs method
-        document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
-            if (!el.hasAttribute('data-discover-initialized')) {
-                el.setAttribute('data-discover-initialized', 'true');
-                populateDiscoverContainer(el);
-            }
-        });
-        injectNativeNavigation();
+        // Jellyfin mutates the DOM constantly: coalesce bursts into one check every 300 ms
+        if (_observerTimer) return;
+        _observerTimer = setTimeout(function() {
+            _observerTimer = null;
+            if (document.hidden) return;
+            // Fallback for Custom Tabs method
+            document.querySelectorAll('.upcoming-movies-plugin').forEach(function(el) {
+                if (!el.hasAttribute('data-discover-initialized')) {
+                    el.setAttribute('data-discover-initialized', 'true');
+                    populateDiscoverContainer(el);
+                }
+            });
+            injectNativeNavigation();
+        }, 300);
     });
     observer.observe(document.body, { childList: true, subtree: true });
 

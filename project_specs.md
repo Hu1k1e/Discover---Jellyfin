@@ -2235,5 +2235,46 @@ Jellyfin 12 completely dropped support for the legacy `X-Emby-Authorization` hea
 
 ---
 
+## Phase 78 — Performance, Security & Stability Pass (v1.0.105)
+
+**Date:** 2026-10-04
+
+### Problems fixed
+
+| # | Problem | Fix |
+|---|---------|-----|
+| 1 | `fetchPluginConfig()` only remembered a *successful* answer, and the body-wide `MutationObserver` was not debounced → 17–24 requests to `/UpcomingMovies/tmdb/config` per page load (every one a 401 on the login page) | Config is fetched once (shared in-flight promise), never before sign-in (`ApiClient.accessToken()`), and a failure is not retried for 30 s |
+| 2 | Sidebar branch of `injectNativeNavigation()` created a new `setInterval` on every call and never stopped when the link already existed | One guarded attempt at a time (`_navInjecting`), bounded to ~2 min, stops as soon as the link exists |
+| 3 | Permanent 150 ms `setInterval` polling `location.hash` | Replaced by `hashchange` + `popstate` + a guarded `history.pushState/replaceState` hook calling the same `onHashMaybeCustom()` logic |
+| 4 | MutationObserver ran its work on every DOM mutation | Debounced to one run per 300 ms, skipped while the tab is hidden |
+| 5 | No server-side caching: every Discover request fanned out into dozens of unthrottled TMDB calls | New `Services/TmdbHttp.cs`: `TmdbHttp.CreateClient()` returns a client with a shared in-memory TMDB response cache (TTL: upcoming 6 h, discover/recommendations/similar/trending 60 min, movie details/credits/keywords 24 h, other 30 min; the api_key is never part of the cache key; max 48 MB / 3000 entries), at most 6 concurrent TMDB requests, 20 s timeout. All TMDB call sites (`TmdbController`, `PlaybackStoppedConsumer`, `UserDataSavedConsumer`, `SyncProfilesTask`) use it; Jellyseerr/Jellyfin calls still use `IHttpClientFactory` |
+| 6 | `/tmdb/profile` and `/tmdb/profile/all` were `[AllowAnonymous]` and leaked user ids + taste profiles to the internet | Both now `[Authorize]`: `profile` = own profile or administrator, `profile/all` = administrators only (the dashboard config page uses `ApiClient.ajax`, which sends the token) |
+| 7 | `recommendations` and `dismiss` trusted the `userId` query parameter, so one user could read/change another user's profile | `MayActOnUser()` – own id or administrator (if the caller id cannot be determined the old behaviour is kept, so nobody is locked out) |
+| 8 | A `userId` from the query string was used verbatim in the profile file path (path traversal) | `GetProfilePath()` accepts GUIDs only and normalises to the `N` format; `GetProfile()` returns an empty profile for non-GUIDs |
+| 9 | Profile files were read/written with no locking, so simultaneous events could overwrite each other; a crash could leave a half-written file | Per-user lock around read-modify-write (`UpdateWithWatch`, `UpdateWithWatchlist`, `GetProfile`, `SaveProfile`) and atomic save (temp file + `File.Move(overwrite)`) |
+| 10 | Event handlers on `IUserDataManager` / `ISessionManager` were never unsubscribed | `Plugin.Dispose()` unsubscribes them |
+| 11 | 402 KB `icon.png` (1024 px) | 256 px, 256-colour PNG (30 KB) |
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `Web/discoverPage.js` | Items 1–4 (the fragile brace block in the recommendations section was NOT touched) |
+| `Services/TmdbHttp.cs` | NEW – shared TMDB client (cache + concurrency limit + timeout) |
+| `Api/TmdbController.cs`, `Services/PlaybackStoppedConsumer.cs`, `Services/UserDataSavedConsumer.cs`, `ScheduledTasks/SyncProfilesTask.cs` | Use `TmdbHttp.CreateClient()`; controller auth/identity helpers |
+| `Services/UserProfileService.cs` | Items 8–9 |
+| `Plugin.cs` | Item 10 |
+| `icon.png` | Item 11 |
+| `.github/workflows/build-check.yml` | NEW – compiles every push/PR to `main` without releasing |
+| `Jellyfin.Plugin.UpcomingMovies.csproj` | Bumped Version to `1.0.105.0` |
+
+### Notes for future agents
+- The daily 08:00 trigger on the *Sync User Profiles* task is a **server-side** schedule (the plugin default is manual only). With the shared cache a repeat run inside 24 h costs no TMDB calls, but consider running it weekly.
+- The cache is in memory only (lost on restart). A disk-backed cache and `append_to_response=credits,keywords` (1 call instead of 3 per movie) are possible follow-ups.
+- The TMDB api_key is still sent as a query parameter (TMDB v3 style); it is excluded from cache keys.
+- Verified with a jsdom differential test of `discoverPage.js` (old vs new): not signed in 17 requests/17 timers -> 0/0; signed in 1 request, 1 sidebar link, 0 leftover timers; discover view still mounts via hash assignment and `pushState`.
+
+---
+
 ### Version Numbering Convention
-Current version: **1.0.102**. Next release: **1.0.103**. Always increment the third part by 1.
+Current version: **1.0.105**. Next release: **1.0.106**. Always increment the third part by 1.
